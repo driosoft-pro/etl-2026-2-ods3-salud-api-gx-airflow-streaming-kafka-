@@ -1,0 +1,6 @@
+FROM docker.io/apache/superset:6.1.0
+
+USER root
+# Install postgres driver into Superset's own venv (/app/.venv)
+RUN pip install --no-cache-dir --target=/app/.venv/lib/python3.10/site-packages "psycopg2-binary>=2.9.0"
+USER superset

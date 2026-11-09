@@ -1,0 +1,28 @@
+# ============================================================================
+# Health Colombia ETL (ODS 3) — Python dependencies
+# Used by: Dockerfile (etl / streaming), Dockerfile.airflow (Airflow) and
+#          flake.nix shellHook (entorno local)
+# ============================================================================
+
+# --- Batch ETL core ---
+pandas>=2.2,<3.0
+numpy>=1.26,<3.0
+psycopg2-binary>=2.9.9
+requests>=2.31
+
+# --- Data quality (Great Expectations) ---
+great-expectations>=1.3,<2.0
+
+# --- Streaming (Kafka producer / consumer) ---
+# Nota: se fija <3 porque kafka-python 3.x renombra/elimina
+# kafka.errors.NoBrokersAvailable (API usada por productor/consumidor).
+kafka-python>=2.2.2,<3.0
+
+# --- Real-time dashboard ---
+# streamlit pide protobuf>=5.26.1,<8; se acota a <7 para no romper los
+# providers de Google / opentelemetry de la imagen de Airflow (requieren <7).
+streamlit>=1.40
+protobuf>=5.26.1,<7
+
+# --- Tests ---
+pytest>=8.0

@@ -1,0 +1,24 @@
+# ============================================================================
+# Apache Airflow 3.1.8 + dependencias del proyecto (Great Expectations, ...)
+#
+# La imagen oficial de Airflow ya trae pandas / numpy / psycopg2 / requests,
+# pero NO great_expectations. Este Dockerfile instala requirements.txt para
+# que los gates de validación de los DAGs ejecuten suites GX REALES dentro de
+# los contenedores de Airflow (si no, gx_backend degrada a fallback nativo).
+#
+# Notas:
+#   * Se instala como usuario `airflow`: la imagen incluye un guard
+#     (/root/bin/pip) que aborta si pip corre como root. El destino final es
+#     /home/airflow/.local, que es exactamente el user-site que ven los
+#     contenedores en runtime (HOME=/home/airflow).
+#   * protobuf se acota a <7 (ver requirements.txt) para no romper los
+#     providers de Google / opentelemetry embebidos en la imagen de Airflow.
+#
+# Build: podman-compose build airflow-scheduler airflow-webserver ...
+# ============================================================================
+FROM docker.io/apache/airflow:3.1.8
+
+USER airflow
+COPY requirements.txt /requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /requirements.txt \
+    && python3 -c "import great_expectations, streamlit, kafka; print('GX', great_expectations.__version__)"

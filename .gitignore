@@ -1,0 +1,42 @@
+# --- Secrets / local environment (NEVER commit) ---
+.env
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- PostgreSQL data volume (bind mount) ---
+.pgdata/
+.kafka-data/
+
+# --- Logs ---
+logs/
+*.log
+etl.log
+# ...except the execution evidence required by the Final Delivery
+!docs/evidence/**/*.log
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Great Expectations uncommitted runtime artifacts ---
+gx/uncommitted/
+gx/plugins/
+
+# --- Airflow dev login file (generated locally, see README §10) ---
+config/simple_auth_manager_passwords.json
+*.generated

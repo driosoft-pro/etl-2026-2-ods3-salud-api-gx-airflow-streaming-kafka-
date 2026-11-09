@@ -1,0 +1,438 @@
+# ============================================================================
+# Docker / Podman Compose Configuration — Health Colombia ETL (ODS 3)
+# Compatible with Docker Compose and Podman Compose (Rootless mode)
+#
+# Services:
+#   1. postgres         -> PostgreSQL 16: DW dimensional salud_colombia
+#                          + metadatos de Airflow en airflow_meta (Port 5432)
+#   2. postgrest        -> PostgREST API exposing DW to Power BI & Web clients (Port 3000)
+#   3. superset-init    -> One-off initialization for Apache Superset
+#   4. superset         -> Apache Superset BI platform for R1–R7 dashboards (Port 8088)
+#   5. superset-bootstrap -> Automated dataset & dashboard registration script
+#   6. airflow-init     -> One-off DB migrations and user setup for Airflow
+#   7. airflow-webserver-> Apache Airflow 3.1.8 Web UI (Port 8080)
+#   8. airflow-scheduler-> Apache Airflow 3.1.8 Scheduler
+#   8b. airflow-dag-processor -> Apache Airflow 3.1.8 DAG Processor (parseo de DAGs)
+#   9. etl              -> Standalone ETL executor container (profile: tools)
+#   10. kafka           -> Apache Kafka (KRaft, single node) event streaming (Port 19092 ext.)
+#   11. streaming-consumer -> Contract validation + streaming metrics (§2.6)
+#   12. streaming-producer -> DW-derived metric updates publisher (§2.6)
+#   13. realtime-dashboard-> Streamlit real-time dashboard (§2.7, Port 8501)
+# ============================================================================
+
+x-airflow-common: &airflow-common
+  # Imagen propia: oficial de Airflow + requirements.txt (Great Expectations
+  # y demas deps de src/). Sin esto los gates GX degradarian a fallback nativo.
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  image: ${AIRFLOW_IMAGE_NAME:-localhost/health-airflow:3.1.8}
+  env_file:
+    - .env
+  environment: &airflow-common-env
+    HOME: /home/airflow
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # Metadatos de Airflow en su PROPIA base (airflow_meta) para que la base
+    # del DW (salud_colombia) contenga solo el modelo dimensional.
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${AIRFLOW_DB:-airflow_meta}
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEBSERVER_SECRET_KEY:-salud-colombia-airflow-secret-2026-secure}"
+    # Airflow 3: los task subprocess (dentro del scheduler con LocalExecutor)
+    # se comunican con la Execution API del api-server. Sin esto usan
+    # localhost:8080 y fallan con Connection refused.
+    AIRFLOW__API__BASE_URL: "http://airflow-webserver:8080"
+    AIRFLOW__API__SECRET_KEY: "${AIRFLOW_WEBSERVER_SECRET_KEY:-salud-colombia-airflow-secret-2026-secure}"
+    # Airflow 3: jwt_secret para la Execution API. Sin esto cada contenedor
+    # genera uno aleatorio y el scheduler/webserver no validan los tokens
+    # entre si ("Invalid auth token: Signature verification failed").
+    AIRFLOW__API_AUTH__JWT_SECRET: "${AIRFLOW_WEBSERVER_SECRET_KEY:-salud-colombia-airflow-secret-2026-secure}"
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "airflow:Admin"
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/config/simple_auth_manager_passwords.json
+    PYTHONPATH: /opt/airflow
+    AIRFLOW_UID: "${AIRFLOW_UID:-0}"
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_NAME: ${POSTGRES_DB}
+    DB_USER: ${POSTGRES_USER}
+    DB_PASSWORD: ${POSTGRES_PASSWORD}
+    DATA_RAW_DIR: /opt/airflow/data/raw
+    GX_EVIDENCE_DIR: /opt/airflow/docs/evidence/gx
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./data:/opt/airflow/data
+    - ./docs:/opt/airflow/docs
+    - ./sql:/opt/airflow/sql
+    - ./scripts:/opt/airflow/scripts
+    - ./gx:/opt/airflow/gx
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+  extra_hosts:
+    - "postgres:host-gateway"
+    - "airflow-webserver:host-gateway"
+  user: "${AIRFLOW_UID:-0}:0"
+
+x-streaming-common: &streaming-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment: &streaming-common-env
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_NAME: ${POSTGRES_DB}
+    DB_USER: ${POSTGRES_USER}
+    DB_PASSWORD: ${POSTGRES_PASSWORD}
+    KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    KAFKA_TOPIC: ${KAFKA_TOPIC:-salud.metric.updates}
+    KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-salud.metric.dlq}
+    KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-health-colombia-streaming}
+    STREAMING_CONSUMER_GROUP: ${STREAMING_CONSUMER_GROUP:-health-metrics-consumers}
+    STREAMING_CONSUMER_ID: ${STREAMING_CONSUMER_ID:-consumer-1}
+    PYTHONPATH: /app
+  volumes:
+    - ./src:/app/src
+    - ./sql:/app/sql
+    - ./scripts:/app/scripts
+    - ./logs:/app/logs
+    - ./docs:/app/docs
+  extra_hosts:
+    - "postgres:host-gateway"
+  depends_on:
+    - postgres
+    - kafka
+
+services:
+  # --------------------------------------------------------------------------
+  # 1. PostgreSQL 16 Dimensional Data Warehouse
+  # --------------------------------------------------------------------------
+  postgres:
+    image: docker.io/library/postgres:16
+    container_name: warehouse_salud
+    userns_mode: "keep-id"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Bind mount (NO volumen nombrado): podman rootless hace chown de los
+      # volumenes nombrados nuevos al uid de la imagen (999), lo que con
+      # userns keep-id rompe initdb ("could not change permissions").
+      # Un bind mount conserva tu dueno. run.sh crea la carpeta antes.
+      - ${PGDATA_HOST_DIR:-./.pgdata}:/var/lib/postgresql/data
+      # Solo se ejecutan en el PRIMER arranque (volumen vacío):
+      #   00 -> crea la base airflow_meta (metadatos de Airflow)
+      #   01 -> crea el esquema dimensional + auditoría en salud_colombia
+      - ./sql/initdb/00_create_databases.sql:/docker-entrypoint-initdb.d/00_create_databases.sql:ro
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 2. PostgREST — REST API layer for Power BI and external clients
+  # Exposes PostgreSQL DW tables and analytical views over RESTful HTTP JSON
+  # --------------------------------------------------------------------------
+  postgrest:
+    image: docker.io/postgrest/postgrest:latest
+    container_name: postgrest_salud
+    userns_mode: "keep-id"
+    env_file:
+      - .env
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMA:-public}
+      PGRST_DB_ANON_ROLE: ${PGRST_DB_ANON_ROLE:-etl_user}
+      PGRST_SERVER_PORT: 3000
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
+    ports:
+      - "${POSTGREST_PORT:-3000}:3000"
+    extra_hosts:
+      - "postgres:host-gateway"
+    depends_on:
+      - postgres
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 3. Apache Superset — BI Initialization (One-off)
+  # --------------------------------------------------------------------------
+  superset-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_init_salud
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-salud-colombia-ods3-secret-key-2026-secure}
+      MAPBOX_API_KEY: ${MAPBOX_API_KEY:-}
+    volumes:
+      - ./config/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - superset_home:/app/superset_home
+    extra_hosts:
+      - "postgres:host-gateway"
+      - "superset:host-gateway"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -euo pipefail
+        echo "[superset-init] Running database migrations..."
+        superset db upgrade
+        echo "[superset-init] Creating admin user..."
+        superset fab create-admin \
+          --username "${SUPERSET_ADMIN_USER:-admin}" \
+          --firstname Health \
+          --lastname Admin \
+          --email "${SUPERSET_ADMIN_EMAIL:-admin@saludcolombia.gov.co}" \
+          --password "${SUPERSET_ADMIN_PASSWORD:-admin}" || true
+        echo "[superset-init] Initializing Superset metadata..."
+        superset init
+        echo "[superset-init] Done!"
+    depends_on:
+      - postgres
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # 4. Apache Superset — Primary Web BI Platform (Port 8088)
+  # --------------------------------------------------------------------------
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_salud
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-salud-colombia-ods3-secret-key-2026-secure}
+      MAPBOX_API_KEY: ${MAPBOX_API_KEY:-}
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    volumes:
+      - ./config/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./scripts:/app/scripts:ro
+      - superset_home:/app/superset_home
+    extra_hosts:
+      - "postgres:host-gateway"
+      - "superset:host-gateway"
+    depends_on:
+      - postgres
+      - superset-init
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 5. Superset Bootstrap — Automated dataset and dashboard creation
+  # --------------------------------------------------------------------------
+  superset-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    profiles:
+      - bootstrap
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      SUPERSET_URL: http://superset:8088
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      SUPERSET_DW_SQLALCHEMY_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./scripts:/app/scripts:ro
+    extra_hosts:
+      - "postgres:host-gateway"
+      - "superset:host-gateway"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - python /app/scripts/superset_bootstrap.py
+    depends_on:
+      - superset
+
+  # --------------------------------------------------------------------------
+  # 6. Apache Airflow 3.1.8 — Initialization
+  # --------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init_salud
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        echo "Initializing Airflow metadata and directories..."
+        mkdir -p /opt/airflow/{logs,dags,plugins,config,gx}
+        airflow db migrate || airflow db init
+        echo "Airflow initialization finished."
+    depends_on:
+      - postgres
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # 7. Apache Airflow 3.1.8 — Webserver UI (Port 8080)
+  # --------------------------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver_salud
+    command: api-server --port 8080 --host 0.0.0.0
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
+    depends_on:
+      - postgres
+      - airflow-init
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 8. Apache Airflow 3.1.8 — Scheduler
+  # --------------------------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler_salud
+    command: scheduler
+    depends_on:
+      - postgres
+      - airflow-init
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 8b. Apache Airflow 3.1.8 — DAG Processor
+  # En Airflow 3.x el parsing/registro de DAGs lo realiza este servicio
+  # dedicado (el scheduler ya no los parsea). Sin el, la UI no muestra DAGs.
+  # --------------------------------------------------------------------------
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: airflow_dag_processor_salud
+    command: dag-processor
+    depends_on:
+      - postgres
+      - airflow-init
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 9. Standalone Python ETL Executor
+  # Solo se ejecuta explicitamente via: podman-compose run --rm etl ...
+  # profiles evita que up/down lo toquen.
+  # --------------------------------------------------------------------------
+  etl:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: etl_process
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+      - ./sql:/app/sql
+      - ./logs:/app/logs
+      - ./docs:/app/docs
+      - ./gx:/app/gx
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+    extra_hosts:
+      - "postgres:host-gateway"
+    depends_on:
+      - postgres
+
+  # --------------------------------------------------------------------------
+  # 10. Apache Kafka — KRaft single-node event broker (§2.6)
+  # INTERNAL listener (kafka:9092) for containers, EXTERNAL (localhost:19092)
+  # for tools running on the host. Topic auto-created with 3 partitions.
+  # Nota: se usa 3.8.0 porque la 4.4.0 empaqueta /opt/kafka/config como
+  # root:root y el entrypoint (user appuser) aborta con "not writable".
+  # --------------------------------------------------------------------------
+  kafka:
+    image: docker.io/apache/kafka:3.8.0
+    container_name: kafka_salud
+    env_file:
+      - .env
+    environment:
+      CLUSTER_ID: "salud-colombia-ods3-cluster"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-19092}:19092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 11. Streaming consumer — validates the event contract and maintains the
+  #     streaming metrics consumed by the real-time dashboard (§2.6)
+  # --------------------------------------------------------------------------
+  streaming-consumer:
+    <<: *streaming-common
+    container_name: streaming_consumer_salud
+    command: python -m src.streaming.consumer
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 12. Streaming publisher — publishes DW-derived metric updates to Kafka
+  #     (only when values changed; --mode replay = simulation, §2.6)
+  # --------------------------------------------------------------------------
+  streaming-producer:
+    <<: *streaming-common
+    container_name: streaming_producer_salud
+    command: >
+      python -m src.streaming.producer
+      --mode ${STREAMING_PRODUCER_MODE:-snapshot}
+      --interval ${STREAMING_PRODUCER_INTERVAL:-10}
+      --loop
+    restart: always
+
+  # --------------------------------------------------------------------------
+  # 13. Real-time dashboard — Streamlit, auto-refresh every few seconds (§2.7)
+  # --------------------------------------------------------------------------
+  realtime-dashboard:
+    <<: *streaming-common
+    container_name: realtime_dashboard_salud
+    command: >
+      streamlit run src/streaming/dashboard.py
+      --server.port 8501 --server.address 0.0.0.0
+      --server.headless true --browser.gatherUsageStats false
+    ports:
+      - "${REALTIME_DASHBOARD_PORT:-8501}:8501"
+    restart: always
+
+volumes:
+  pgdata:
+  superset_home:
