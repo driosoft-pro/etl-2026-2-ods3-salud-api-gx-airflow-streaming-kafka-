@@ -1,0 +1,218 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5568"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2b6cb0"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c05621"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b46c1"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1280" height="820" fill="#f7fafc"/>
+
+  <!-- Title -->
+  <text x="640" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a202c">
+    Arquitectura integrada — Health Colombia ODS 3 (ETL batch + streaming)
+  </text>
+  <text x="640" y="56" text-anchor="middle" font-size="12" fill="#718096">
+    Repositorio final ETL 2026-2 · Figure 1 (adaptada a los requisitos del proyecto)
+  </text>
+
+  <!-- ============================= BATCH ZONE ============================= -->
+  <rect x="24" y="76" width="600" height="470" rx="14" fill="#ebf8ff" stroke="#90cdf4" stroke-dasharray="6 4"/>
+  <text x="40" y="98" font-size="13" font-weight="bold" color="#2b6cb0" fill="#2b6cb0">FLUJO BATCH (latencia: minutos/horas)</text>
+
+  <!-- Sources -->
+  <rect x="44" y="130" width="196" height="86" rx="8" fill="#ffffff" stroke="#3182ce" stroke-width="1.5"/>
+  <text x="142" y="152" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c5282">Fuente estática (CSV)</text>
+  <text x="142" y="172" text-anchor="middle" font-size="10.5" fill="#4a5568">affiliates_by_department...</text>
+  <text x="142" y="188" text-anchor="middle" font-size="10.5" fill="#4a5568">healthcare_facilities...</text>
+  <text x="142" y="206" text-anchor="middle" font-size="10" fill="#718096">3.370 + 41.427 filas</text>
+
+  <rect x="44" y="240" width="196" height="86" rx="8" fill="#ffffff" stroke="#3182ce" stroke-width="1.5"/>
+  <text x="142" y="262" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c5282">API dinámica (REST)</text>
+  <text x="142" y="282" text-anchor="middle" font-size="10.5" fill="#4a5568">api-colombia.com/api/v1</text>
+  <text x="142" y="298" text-anchor="middle" font-size="10.5" fill="#4a5568">/Department · /Region</text>
+  <text x="142" y="316" text-anchor="middle" font-size="10" fill="#718096">extracción por lotes + caché</text>
+
+  <!-- Airflow DAG -->
+  <rect x="270" y="118" width="326" height="330" rx="10" fill="#ffffff" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="433" y="140" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#2c5282">Apache Airflow 3.1.8 — DAG batch</text>
+  <text x="433" y="156" text-anchor="middle" font-size="10.5" fill="#718096">reliable_health_pipeline (TaskFlow)</text>
+
+  <rect x="292" y="168" width="282" height="42" rx="6" fill="#ebf8ff" stroke="#63b3ed"/>
+  <text x="433" y="185" text-anchor="middle" font-size="11" font-weight="bold" fill="#2c5282">1 · EXTRACT (CSV + API Colombia)</text>
+  <text x="433" y="201" text-anchor="middle" font-size="9.5" fill="#718096">extract_primary · extract_api (retries)</text>
+
+  <rect x="292" y="216" width="282" height="42" rx="6" fill="#faf5ff" stroke="#9f7aea"/>
+  <text x="433" y="233" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">2 · GATES GX 1 y 2 (raw)</text>
+  <text x="433" y="249" text-anchor="middle" font-size="9.5" fill="#718096">DQ-01…DQ-07 · bloquean si hay fallo crítico</text>
+
+  <rect x="292" y="264" width="282" height="42" rx="6" fill="#ebf8ff" stroke="#63b3ed"/>
+  <text x="433" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#2c5282">3 · TRANSFORM (Pandas)</text>
+  <text x="433" y="297" text-anchor="middle" font-size="9.5" fill="#718096">limpieza + integración + esquema estrella</text>
+
+  <rect x="292" y="312" width="282" height="42" rx="6" fill="#faf5ff" stroke="#9f7aea"/>
+  <text x="433" y="329" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">4 · GATE GX 3 (prepared)</text>
+  <text x="433" y="345" text-anchor="middle" font-size="9.5" fill="#718096">DQ-08…DQ-12 · grano, FKs, reconciliación</text>
+
+  <rect x="292" y="360" width="282" height="42" rx="6" fill="#ebf8ff" stroke="#63b3ed"/>
+  <text x="433" y="377" text-anchor="middle" font-size="11" font-weight="bold" fill="#2c5282">5 · LOAD (full_replace idempotente)</text>
+  <text x="433" y="393" text-anchor="middle" font-size="9.5" fill="#718096">psycopg2 · execute_values · ON CONFLICT</text>
+
+  <rect x="292" y="408" width="282" height="30" rx="6" fill="#ebf8ff" stroke="#63b3ed"/>
+  <text x="433" y="427" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#2c5282">6 · VERIFY KPIs (v_r6 / v_r7) + audit</text>
+
+  <line x1="433" y1="210" x2="433" y2="216" stroke="#4a5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="433" y1="258" x2="433" y2="264" stroke="#4a5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="433" y1="306" x2="433" y2="312" stroke="#4a5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="433" y1="354" x2="433" y2="360" stroke="#4a5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="433" y1="402" x2="433" y2="408" stroke="#4a5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- Sources -> Airflow -->
+  <line x1="240" y1="173" x2="268" y2="200" stroke="#2b6cb0" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+  <line x1="240" y1="283" x2="268" y2="235" stroke="#2b6cb0" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+  <text x="246" y="196" font-size="9.5" fill="#2b6cb0">lotes</text>
+
+  <!-- Great Expectations panel -->
+  <rect x="44" y="360" width="196" height="170" rx="8" fill="#faf5ff" stroke="#805ad5" stroke-width="1.5"/>
+  <text x="142" y="382" text-anchor="middle" font-size="12" font-weight="bold" fill="#553c9a">Great Expectations</text>
+  <text x="142" y="400" text-anchor="middle" font-size="10" fill="#4a5568">12 reglas DQ-01…DQ-12</text>
+  <text x="142" y="416" text-anchor="middle" font-size="10" fill="#4a5568">3 suites / 3 gates</text>
+  <text x="142" y="432" text-anchor="middle" font-size="10" fill="#4a5568">severidad CRITICAL</text>
+  <text x="142" y="452" text-anchor="middle" font-size="10" fill="#4a5568">· evidencia JSON (docs/)</text>
+  <text x="142" y="468" text-anchor="middle" font-size="10" fill="#4a5568">· resultados en audit.dq</text>
+  <text x="142" y="484" text-anchor="middle" font-size="10" fill="#4a5568">· fallo crítico = BLOCKED</text>
+  <text x="142" y="504" text-anchor="middle" font-size="10" fill="#553c9a">visible en Airflow (FAILED)</text>
+  <text x="142" y="522" text-anchor="middle" font-size="9.5" fill="#718096">simulación: --simulate-failure</text>
+
+  <line x1="240" y1="420" x2="290" y2="335" stroke="#805ad5" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrow-purple)"/>
+  <text x="234" y="368" font-size="9.5" fill="#6b46c1">valida en</text>
+  <text x="234" y="381" font-size="9.5" fill="#6b46c1">runtime</text>
+
+  <!-- ============================= DATA WAREHOUSE ============================= -->
+  <rect x="660" y="76" width="272" height="372" rx="12" fill="#f0fff4" stroke="#38a169" stroke-width="2"/>
+  <text x="796" y="100" text-anchor="middle" font-size="13" font-weight="bold" fill="#22543d">PostgreSQL 16 — Data Warehouse</text>
+  <text x="796" y="117" text-anchor="middle" font-size="10.5" fill="#38a169">base: salud_colombia</text>
+
+  <rect x="678" y="130" width="236" height="74" rx="6" fill="#ffffff" stroke="#68d391"/>
+  <text x="796" y="148" text-anchor="middle" font-size="11" font-weight="bold" fill="#22543d">Modelo dimensional (Kimball)</text>
+  <text x="796" y="165" text-anchor="middle" font-size="10" fill="#4a5568">5 dimensiones (time, geografia, regime,</text>
+  <text x="796" y="180" text-anchor="middle" font-size="10" fill="#4a5568">facility, capacity_type)</text>
+  <text x="796" y="196" text-anchor="middle" font-size="10" fill="#4a5568">2 hechos (affiliates, capacity)</text>
+
+  <rect x="678" y="212" width="236" height="52" rx="6" fill="#ffffff" stroke="#68d391"/>
+  <text x="796" y="230" text-anchor="middle" font-size="11" font-weight="bold" fill="#22543d">Vistas analíticas R1–R7</text>
+  <text x="796" y="247" text-anchor="middle" font-size="10" fill="#4a5568">v_r6_demographic_coverage · v_r7_...</text>
+
+  <rect x="678" y="272" width="236" height="52" rx="6" fill="#ffffff" stroke="#68d391"/>
+  <text x="796" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#22543d">Esquema audit</text>
+  <text x="796" y="307" text-anchor="middle" font-size="10" fill="#4a5568">etl_run · dq_check_result · batch_log</text>
+
+  <rect x="678" y="332" width="236" height="96" rx="6" fill="#fffaf0" stroke="#ed8936" stroke-dasharray="4 3"/>
+  <text x="796" y="351" text-anchor="middle" font-size="11" font-weight="bold" fill="#c05621">Esquema streaming (§2.6/2.7)</text>
+  <text x="796" y="368" text-anchor="middle" font-size="10" fill="#4a5568">event_log · metric_state</text>
+  <text x="796" y="383" text-anchor="middle" font-size="10" fill="#4a5568">invalid_events (DLQ) · producer_state</text>
+  <text x="796" y="398" text-anchor="middle" font-size="10" fill="#4a5568">consumer_heartbeat</text>
+  <text x="796" y="418" text-anchor="middle" font-size="9.5" fill="#c05621">métricas de baja latencia</text>
+
+  <!-- Airflow -> DW -->
+  <line x1="596" y1="381" x2="658" y2="300" stroke="#2b6cb0" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+  <text x="600" y="332" font-size="10" fill="#2b6cb0">LOAD</text>
+
+  <!-- ============================= BATCH DASHBOARD ============================= -->
+  <rect x="988" y="96" width="264" height="150" rx="10" fill="#ebf8ff" stroke="#3182ce" stroke-width="2"/>
+  <text x="1120" y="120" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#2c5282">Dashboard analítico batch</text>
+  <text x="1120" y="138" text-anchor="middle" font-size="11" font-weight="bold" fill="#3182ce">Apache Superset :8088</text>
+  <text x="1120" y="158" text-anchor="middle" font-size="10" fill="#4a5568">KPIs históricos R1–R7</text>
+  <text x="1120" y="174" text-anchor="middle" font-size="10" fill="#4a5568">· 4 KPIs ejecutivos + 11 charts</text>
+  <text x="1120" y="190" text-anchor="middle" font-size="10" fill="#4a5568">· filtros región / régimen / depto</text>
+  <text x="1120" y="206" text-anchor="middle" font-size="10" fill="#4a5568">· se actualiza tras cada DAG run</text>
+  <text x="1120" y="228" text-anchor="middle" font-size="9.5" fill="#718096">3 dashboards: ods3-salud-colombia,</text>
+  <text x="1120" y="242" text-anchor="middle" font-size="9.5" fill="#718096">ods3-requerimientos, ods3-granularity</text>
+
+  <line x1="932" y1="171" x2="986" y2="171" stroke="#2b6cb0" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+  <text x="944" y="163" font-size="9.5" fill="#2b6cb0">SQL</text>
+
+  <!-- ============================= STREAMING ZONE ============================= -->
+  <rect x="636" y="474" width="620" height="322" rx="14" fill="#fffaf0" stroke="#f6ad55" stroke-dasharray="6 4"/>
+  <text x="652" y="496" font-size="13" font-weight="bold" fill="#c05621">FLUJO STREAMING (latencia: segundos)</text>
+
+  <!-- Producer -->
+  <rect x="660" y="512" width="272" height="92" rx="8" fill="#ffffff" stroke="#ed8936" stroke-width="1.5"/>
+  <text x="796" y="533" text-anchor="middle" font-size="12" font-weight="bold" fill="#c05621">Productor Kafka (Python)</text>
+  <text x="796" y="551" text-anchor="middle" font-size="10" fill="#4a5568">deriva métricas de los hechos del DW</text>
+  <text x="796" y="567" text-anchor="middle" font-size="10" fill="#4a5568">publica SOLO valores cambiados</text>
+  <text x="796" y="583" text-anchor="middle" font-size="10" fill="#4a5568">modos: snapshot | replay (simulado)</text>
+  <text x="796" y="599" text-anchor="middle" font-size="9.5" fill="#718096">alertas threshold_alert &gt; 5%</text>
+
+  <!-- DW -> Producer -->
+  <line x1="740" y1="450" x2="740" y2="510" stroke="#c05621" stroke-width="1.8" marker-end="url(#arrow-orange)"/>
+  <text x="748" y="474" font-size="9.5" fill="#c05621">lee fact_affiliates /</text>
+  <text x="748" y="487" font-size="9.5" fill="#c05621">fact_facility_capacity</text>
+
+  <!-- Kafka -->
+  <rect x="984" y="504" width="252" height="108" rx="8" fill="#ffffff" stroke="#ed8936" stroke-width="2"/>
+  <text x="1110" y="526" text-anchor="middle" font-size="12" font-weight="bold" fill="#c05621">Apache Kafka (KRaft)</text>
+  <text x="1110" y="545" text-anchor="middle" font-size="10.5" fill="#4a5568">topic: salud.metric.updates</text>
+  <text x="1110" y="561" text-anchor="middle" font-size="10" fill="#4a5568">3 particiones · key = event_key</text>
+  <text x="1110" y="577" text-anchor="middle" font-size="10" fill="#4a5568">DLQ: salud.metric.dlq</text>
+  <text x="1110" y="595" text-anchor="middle" font-size="9.5" fill="#718096">contrato v1: event_id, timestamp,</text>
+  <text x="1110" y="608" text-anchor="middle" font-size="9.5" fill="#718096">tipos, metric_name, payload, source</text>
+
+  <line x1="934" y1="558" x2="982" y2="558" stroke="#c05621" stroke-width="1.8" marker-end="url(#arrow-orange)"/>
+  <text x="938" y="550" font-size="9.5" fill="#c05621">publish</text>
+
+  <!-- Consumer -->
+  <rect x="984" y="636" width="252" height="92" rx="8" fill="#ffffff" stroke="#ed8936" stroke-width="1.5"/>
+  <text x="1110" y="657" text-anchor="middle" font-size="12" font-weight="bold" fill="#c05621">Consumidor Kafka (Python)</text>
+  <text x="1110" y="675" text-anchor="middle" font-size="10" fill="#4a5568">valida contrato → event_log</text>
+  <text x="1110" y="691" text-anchor="middle" font-size="10" fill="#4a5568">inválido → DLQ + invalid_events</text>
+  <text x="1110" y="707" text-anchor="middle" font-size="10" fill="#4a5568">actualiza ≥7 métricas streaming</text>
+  <text x="1110" y="723" text-anchor="middle" font-size="9.5" fill="#718096">offsets tras procesar (at-least-once)</text>
+
+  <line x1="1110" y1="612" x2="1110" y2="634" stroke="#c05621" stroke-width="1.8" marker-end="url(#arrow-orange)"/>
+  <text x="1118" y="627" font-size="9.5" fill="#c05621">subscribe</text>
+
+  <!-- Consumer -> DW streaming schema -->
+  <path d="M 984 690 L 946 690 L 946 434 L 866 434" fill="none" stroke="#c05621" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-orange)"/>
+  <text x="874" y="446" font-size="9.5" fill="#c05621">metric_state / event_log / heartbeat</text>
+
+  <!-- Real-time dashboard -->
+  <rect x="660" y="636" width="272" height="140" rx="10" fill="#ffffff" stroke="#ed8936" stroke-width="2"/>
+  <text x="796" y="658" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#c05621">Dashboard tiempo real</text>
+  <text x="796" y="676" text-anchor="middle" font-size="11" font-weight="bold" fill="#dd6b20">Streamlit :8501 (auto-refresh 3s)</text>
+  <text x="796" y="696" text-anchor="middle" font-size="10" fill="#4a5568">≥3 métricas: eventos, inválidos,</text>
+  <text x="796" y="712" text-anchor="middle" font-size="10" fill="#4a5568">afiliados, delta, capacidad, /min</text>
+  <text x="796" y="728" text-anchor="middle" font-size="10" fill="#4a5568">tendencias + feed de eventos</text>
+  <text x="796" y="744" text-anchor="middle" font-size="10" fill="#4a5568">estado del consumidor (heartbeat)</text>
+  <text x="796" y="764" text-anchor="middle" font-size="9.5" fill="#718096">latencia: segundos (vs Superset: horas)</text>
+
+  <!-- DW streaming schema -> dashboard -->
+  <line x1="700" y1="430" x2="700" y2="634" stroke="#c05621" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-orange)"/>
+  <text x="666" y="546" font-size="9.5" fill="#c05621" transform="rotate(-90 666 546)">lee streaming.metric_state</text>
+
+  <!-- Dashboard -> DW (read path) -->
+  <line x1="792" y1="634" x2="792" y2="434" stroke="#c05621" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arrow-orange)"/>
+
+  <!-- ============================= LEGEND ============================= -->
+  <rect x="24" y="566" width="580" height="130" rx="10" fill="#ffffff" stroke="#cbd5e0"/>
+  <text x="44" y="590" font-size="12" font-weight="bold" fill="#2d3748">Leyenda / decisiones clave</text>
+  <rect x="44" y="604" width="18" height="12" fill="#ebf8ff" stroke="#3182ce"/>
+  <text x="70" y="614" font-size="10.5" fill="#4a5568">Batch: ETL + DW + dashboard histórico (Superset)</text>
+  <rect x="44" y="626" width="18" height="12" fill="#fffaf0" stroke="#ed8936"/>
+  <text x="70" y="636" font-size="10.5" fill="#4a5568">Streaming: productor → Kafka → consumidor → tiempo real</text>
+  <rect x="44" y="648" width="18" height="12" fill="#faf5ff" stroke="#805ad5"/>
+  <text x="70" y="658" font-size="10.5" fill="#4a5568">Calidad: Great Expectations bloquea datos críticos</text>
+  <text x="44" y="682" font-size="10" fill="#718096">El consumidor es tolerante a fallos: eventos inválidos van a DLQ sin detener el flujo;</text>
+  <text x="44" y="696" font-size="10" fill="#718096">si el consumidor se detiene, los offsets no confirmados conservan los eventos pendientes.</text>
+
+  <rect x="636" y="566" width="0" height="0" fill="none"/>
+</svg>
