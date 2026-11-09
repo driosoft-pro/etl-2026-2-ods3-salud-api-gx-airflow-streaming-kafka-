@@ -1,0 +1,46 @@
+=== Demo: generación de eventos (productor Kafka) + escucha del tópico ===
+Fecha UTC: 2026-11-09T02:18:51Z
+
+--- [1/4] SIMULACIÓN: replay de eventos históricos del DW (mode=replay, claramente identificado como simulación) ---
+2026-11-09 02:19:58,063 INFO    streaming.producer: published metric_update key=capacity_by_department:88 value=267.0 (slots) -> topic=salud.metric.updates partition=0 offset=106
+2026-11-09 02:19:58,585 INFO    streaming.producer: published metric_update key=capacity_by_department:91 value=446.0 (slots) -> topic=salud.metric.updates partition=0 offset=107
+2026-11-09 02:19:59,106 INFO    streaming.producer: published metric_update key=capacity_by_department:94 value=96.0 (slots) -> topic=salud.metric.updates partition=0 offset=108
+2026-11-09 02:19:59,628 INFO    streaming.producer: published metric_update key=capacity_by_department:95 value=277.0 (slots) -> topic=salud.metric.updates partition=0 offset=109
+2026-11-09 02:20:00,150 INFO    streaming.producer: published metric_update key=capacity_by_department:97 value=50.0 (slots) -> topic=salud.metric.updates partition=0 offset=110
+2026-11-09 02:20:00,671 INFO    streaming.producer: published metric_update key=capacity_by_department:99 value=164.0 (slots) -> topic=salud.metric.updates partition=0 offset=111
+2026-11-09 02:20:01,172 INFO    streaming.producer: pass complete: 134 events published (total=134)
+2026-11-09 02:20:01,173 INFO    streaming.producer: producer finished | events_published=134
+
+--- [2/4] Productor en modo loop (background) + escucha concurrente del tópico salud.metric.updates ---
+400726426af63746eb589ca39cf02a3982b7f0d6ae9a10b29ed4df6ac6720343
+--- listening on salud.metric.updates (max 5 events, 30s timeout) ---
+[partition=1 offset=67] key=affiliates_by_department:19
+  {"event_id": "b9e79e06-d140-401a-9d3e-279766ebf308", "event_type": "metric_update", "schema_version": 1, "event_key": "affiliates_by_department:19", "timestamp": "2026-11-09T02:20:05.616873+00:00", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": 1328807.0, "unit": "persons", "previous_value": 0.0, "delta": 1328807.0, "dimension": {"department_code": "19", "department": "CAUCA", "region": "Pacifico", "replay_cycle": 1}}, "source": {"mode": "replay", "simulation": true, "batch_id": null, "replay_cycle": 1}}
+[partition=1 offset=68] key=affiliates_by_department:20
+  {"event_id": "6495345f-aaf1-4d12-a953-7a4b2dee7041", "event_type": "metric_update", "schema_version": 1, "event_key": "affiliates_by_department:20", "timestamp": "2026-11-09T02:20:06.139080+00:00", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": 1264145.0, "unit": "persons", "previous_value": 0.0, "delta": 1264145.0, "dimension": {"department_code": "20", "department": "CESAR", "region": "Caribe", "replay_cycle": 1}}, "source": {"mode": "replay", "simulation": true, "batch_id": null, "replay_cycle": 1}}
+[partition=2 offset=93] key=affiliates_by_department:23
+  {"event_id": "6d413088-f672-496c-91e9-a52fc3afed98", "event_type": "metric_update", "schema_version": 1, "event_key": "affiliates_by_department:23", "timestamp": "2026-11-09T02:20:06.661383+00:00", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": 1704832.0, "unit": "persons", "previous_value": 0.0, "delta": 1704832.0, "dimension": {"department_code": "23", "department": "CORDOBA", "region": "Caribe", "replay_cycle": 1}}, "source": {"mode": "replay", "simulation": true, "batch_id": null, "replay_cycle": 1}}
+[partition=2 offset=94] key=affiliates_by_department:25
+  {"event_id": "c5376af1-c69d-4214-9123-9f0f8d7423fd", "event_type": "metric_update", "schema_version": 1, "event_key": "affiliates_by_department:25", "timestamp": "2026-11-09T02:20:07.183125+00:00", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": 2609762.0, "unit": "persons", "previous_value": 0.0, "delta": 2609762.0, "dimension": {"department_code": "25", "department": "CUNDINAMARCA", "region": "Andina", "replay_cycle": 1}}, "source": {"mode": "replay", "simulation": true, "batch_id": null, "replay_cycle": 1}}
+[partition=2 offset=95] key=affiliates_by_department:27
+  {"event_id": "222a46cd-8eb3-4564-8b85-2db240a99a4f", "event_type": "metric_update", "schema_version": 1, "event_key": "affiliates_by_department:27", "timestamp": "2026-11-09T02:20:07.705280+00:00", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": 441356.0, "unit": "persons", "previous_value": 0.0, "delta": 441356.0, "dimension": {"department_code": "27", "department": "CHOCO", "region": "Pacifico", "replay_cycle": 1}}, "source": {"mode": "replay", "simulation": true, "batch_id": null, "replay_cycle": 1}}
+--- received 5 event(s) ---
+
+--- [3/4] Consumidor procesando esos eventos (log) ---
+2026-11-09 02:20:04,077 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:15 metric=affiliates_by_department value=1183559.0
+2026-11-09 02:20:04,601 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:17 metric=affiliates_by_department value=934592.0
+2026-11-09 02:20:05,122 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:18 metric=affiliates_by_department value=413663.0
+2026-11-09 02:20:05,644 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:19 metric=affiliates_by_department value=1328807.0
+2026-11-09 02:20:06,166 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:20 metric=affiliates_by_department value=1264145.0
+2026-11-09 02:20:06,688 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:23 metric=affiliates_by_department value=1704832.0
+2026-11-09 02:20:07,211 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:25 metric=affiliates_by_department value=2609762.0
+2026-11-09 02:20:07,733 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:27 metric=affiliates_by_department value=441356.0
+
+--- [4/4] Topics de Kafka (salud.metric.updates: 3 particiones; DLQ) ---
+Topic: salud.metric.updates	TopicId: hIEtUjy-T16iFHGja2D28Q	PartitionCount: 3	ReplicationFactor: 1	Configs: 
+	Topic: salud.metric.updates	Partition: 0	Leader: 1	Replicas: 1	Isr: 1	Elr: 	LastKnownElr: 
+	Topic: salud.metric.updates	Partition: 1	Leader: 1	Replicas: 1	Isr: 1	Elr: 	LastKnownElr: 
+	Topic: salud.metric.updates	Partition: 2	Leader: 1	Replicas: 1	Isr: 1	Elr: 	LastKnownElr: 
+Topic: salud.metric.dlq	TopicId: 7xvr-hneT2S3uDUet0_OiQ	PartitionCount: 1	ReplicationFactor: 1	Configs: 
+	Topic: salud.metric.dlq	Partition: 0	Leader: 1	Replicas: 1	Isr: 1	Elr: 	LastKnownElr: 
+(productor de replay detenido)

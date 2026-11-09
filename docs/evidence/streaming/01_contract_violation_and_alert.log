@@ -1,0 +1,12 @@
+=== Experimento: evento inválido (violación de contrato) + payload no-JSON + alerta ===
+Fecha UTC: 2026-11-09T01:46:25Z
+
+--- Consumidor: rechazos + enrutado a DLQ + alerta procesada ---
+2026-11-09 01:40:33,406 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {"event_type": "metric_update", "schema_version": 999, "event_key": "", "timestamp": "not-a-date", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": "NaN", "unit": "persons"}} | errors=["missing required field 'event_id'"]
+2026-11-09 01:43:47,028 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!! | errors=['payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)']
+2026-11-09 01:45:28,386 INFO    streaming.consumer: DLQ topic ready: salud.metric.dlq
+2026-11-09 01:45:40,612 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!! | errors=['payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)']
+2026-11-09 01:45:40,619 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:garbage
+2026-11-09 01:46:00,352 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {"event_type": "metric_update", "schema_version": 999, "event_key": "", "timestamp": "not-a-date", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": "NaN", "unit": "persons"}} | errors=["missing required field 'event_id'"]
+2026-11-09 01:46:00,353 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:invalid
+2026-11-09 01:46:00,361 INFO    streaming.consumer: consumed threshold_alert key=affiliates_by_department:11 metric=affiliates_by_department value=8500000

@@ -1,0 +1,58 @@
+=== Estado de las tablas streaming.* (PostgreSQL) ===
+Fecha UTC: 2026-11-09T02:20:42Z
+
+--- Conteos ---
+       tabla        | filas 
+--------------------+-------
+ event_log          |   415
+ invalid_events     |     4
+ metric_state       |     7
+ producer_state     |    67
+ consumer_heartbeat |     1
+(5 rows)
+
+--- Métricas materializadas (metric_state) ---
+       metric_name       | metric_value | previous_value | delta | event_count | invalid_count |         last_event_at         
+-------------------------+--------------+----------------+-------+-------------+---------------+-------------------------------
+ affiliates_latest_total |   51182238.0 |                |       |           0 |             0 | 2026-11-09 02:20:42.150129+00
+ affiliates_net_delta    |  154146714.0 |                |       |           0 |             0 | 2026-11-09 02:20:42.150129+00
+ capacity_latest_total   |     218758.0 |                |       |           0 |             0 | 2026-11-09 02:20:35.888145+00
+ events_per_minute       |          115 |                |       |           0 |             0 | 2026-11-09 02:20:42.150129+00
+ events_processed_total  |          415 |                |       |         415 |             0 | 2026-11-09 02:20:42.150129+00
+ invalid_events_total    |            4 |                |       |           4 |             0 | 
+ threshold_alerts_total  |            1 |                |       |           1 |             0 | 2026-11-09 01:46:00.349092+00
+(7 rows)
+
+--- Eventos inválidos (dead-letter en PostgreSQL) ---
+ invalid_id |       reason       |                                                   errors                                                   |                           payload                            | message_key  |          received_at          
+------------+--------------------+------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------+--------------+-------------------------------
+          1 | contract_violation | ["missing required field 'event_id'"]                                                                      | {"event_type": "metric_update", "schema_version": 999, "even | demo:invalid | 2026-11-09 01:40:33.403523+00
+          2 | contract_violation | ["payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"] | {{{not-json!!                                                | demo:garbage | 2026-11-09 01:43:47.026098+00
+          3 | contract_violation | ["payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"] | {{{not-json!!                                                | demo:garbage | 2026-11-09 01:45:40.603601+00
+          4 | contract_violation | ["missing required field 'event_id'"]                                                                      | {"event_type": "metric_update", "schema_version": 999, "even | demo:invalid | 2026-11-09 01:46:00.349819+00
+(4 rows)
+
+--- Últimos eventos consumidos (event_log) ---
+  event_type   |          event_key          |       metric_name        |   value   | delta |          received_at          
+---------------+-----------------------------+--------------------------+-----------+-------+-------------------------------
+ metric_update | affiliates_by_department:25 | affiliates_by_department | 2609762.0 |   0.0 | 2026-11-09 02:20:42.173779+00
+ metric_update | affiliates_by_department:23 | affiliates_by_department | 1704832.0 |   0.0 | 2026-11-09 02:20:41.65058+00
+ metric_update | affiliates_by_department:20 | affiliates_by_department | 1264145.0 |   0.0 | 2026-11-09 02:20:41.129182+00
+ metric_update | affiliates_by_department:19 | affiliates_by_department | 1328807.0 |   0.0 | 2026-11-09 02:20:40.606806+00
+ metric_update | affiliates_by_department:18 | affiliates_by_department |  413663.0 |   0.0 | 2026-11-09 02:20:40.08471+00
+ metric_update | affiliates_by_department:17 | affiliates_by_department |  934592.0 |   0.0 | 2026-11-09 02:20:39.562229+00
+ metric_update | affiliates_by_department:15 | affiliates_by_department | 1183559.0 |   0.0 | 2026-11-09 02:20:39.040607+00
+ metric_update | affiliates_by_department:13 | affiliates_by_department | 2284134.0 |   0.0 | 2026-11-09 02:20:38.518194+00
+(8 rows)
+
+--- Heartbeat del consumidor ---
+ consumer_id | status  | events_processed | invalid_events |        last_heartbeat         | age_s 
+-------------+---------+------------------+----------------+-------------------------------+-------
+ consumer-1  | running |              347 |              0 | 2026-11-09 02:20:42.173779+00 |     0
+(1 row)
+
+
+=== Topics de Kafka ===
+__consumer_offsets
+salud.metric.dlq
+salud.metric.updates

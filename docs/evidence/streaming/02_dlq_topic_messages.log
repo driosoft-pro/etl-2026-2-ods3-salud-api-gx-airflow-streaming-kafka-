@@ -1,0 +1,18 @@
+=== Topic DLQ (salud.metric.dlq) — mensajes publicados por el consumidor ===
+--- mensaje 1 (partition=1, offset=0, key=b'demo:garbage') ---
+{
+  "raw": "{{{not-json!!",
+  "errors": [
+    "payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  ],
+  "consumer": "consumer-1"
+}
+--- mensaje 2 (partition=2, offset=0, key=b'demo:invalid') ---
+{
+  "raw": "{\"event_type\": \"metric_update\", \"schema_version\": 999, \"event_key\": \"\", \"timestamp\": \"not-a-date\", \"metric_name\": \"affiliates_by_department\", \"payload\": {\"metric_name\": \"affiliates_by_department\", \"value\": \"NaN\", \"unit\": \"persons\"}}",
+  "errors": [
+    "missing required field 'event_id'"
+  ],
+  "consumer": "consumer-1"
+}
+Total mensajes DLQ: 2

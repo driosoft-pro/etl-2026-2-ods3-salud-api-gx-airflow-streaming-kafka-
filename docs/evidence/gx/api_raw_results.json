@@ -1,0 +1,225 @@
+{
+  "gate": "api_raw_validation",
+  "executed_at": "2026-11-09T02:15:23.788672+00:00",
+  "total_rules": 2,
+  "passed_rules": 1,
+  "failed_rules": 1,
+  "has_critical_failure": true,
+  "gx": {
+    "available": true,
+    "library": "great_expectations",
+    "version": "1.24.1",
+    "mode": "ephemeral",
+    "suites_requested": 1,
+    "suites_run": 1,
+    "expectations_total": 4,
+    "expectations_passed": 4,
+    "expectations_failed": 0,
+    "failed_rules": [],
+    "suites": [
+      {
+        "suite": "api_raw_departments",
+        "rows": 33,
+        "available": true,
+        "expectations_total": 4,
+        "expectations_passed": 4,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-06",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "department_name",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-06",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "api_id",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-07",
+            "expectation": "expect_column_values_to_be_between",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "population_num",
+              "mostly": 1,
+              "min_value": 0.0,
+              "strict_min": true,
+              "strict_max": false
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-07",
+            "expectation": "expect_column_values_to_be_between",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "surface_num",
+              "mostly": 1,
+              "min_value": 0.0,
+              "strict_min": true,
+              "strict_max": false
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "evaluations": [
+    {
+      "rule_id": "DQ-06",
+      "description": "API Colombia department records must contain name and id",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "null_names": 0,
+        "null_ids": 0,
+        "records": 33,
+        "gx": {
+          "expectations": 2,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-06",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "department_name",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-06",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "api_id",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-07",
+      "description": "Official population and surface from API must be positive (> 0)",
+      "severity": "CRITICAL",
+      "success": false,
+      "details": {
+        "invalid_population_count": 5,
+        "invalid_surface_count": 3,
+        "gx": {
+          "expectations": 2,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-07",
+          "expectation": "expect_column_values_to_be_between",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "population_num",
+            "mostly": 1,
+            "min_value": 0.0,
+            "strict_min": true,
+            "strict_max": false
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-07",
+          "expectation": "expect_column_values_to_be_between",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "surface_num",
+            "mostly": 1,
+            "min_value": 0.0,
+            "strict_min": true,
+            "strict_max": false
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    }
+  ]
+}

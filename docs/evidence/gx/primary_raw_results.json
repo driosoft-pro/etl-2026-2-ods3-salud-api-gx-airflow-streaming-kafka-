@@ -1,0 +1,587 @@
+{
+  "gate": "primary_raw_validation",
+  "executed_at": "2026-11-09T02:15:23.714617+00:00",
+  "total_rules": 5,
+  "passed_rules": 4,
+  "failed_rules": 1,
+  "has_critical_failure": true,
+  "gx": {
+    "available": true,
+    "library": "great_expectations",
+    "version": "1.24.1",
+    "mode": "ephemeral",
+    "suites_requested": 3,
+    "suites_run": 3,
+    "expectations_total": 11,
+    "expectations_passed": 11,
+    "expectations_failed": 0,
+    "failed_rules": [],
+    "suites": [
+      {
+        "suite": "primary_raw_affiliates_schema",
+        "rows": 3369,
+        "available": true,
+        "expectations_total": 2,
+        "expectations_passed": 2,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-01",
+            "expectation": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": false,
+              "severity": "critical",
+              "column_set": [
+                "department",
+                "department_code",
+                "month",
+                "municipality",
+                "municipality_code",
+                "num_persons",
+                "regime_id",
+                "year"
+              ],
+              "exact_match": true
+            },
+            "success": true,
+            "observed": {
+              "observed_value": [
+                "department",
+                "department_code",
+                "month",
+                "municipality",
+                "municipality_code",
+                "num_persons",
+                "regime_id",
+                "year"
+              ]
+            }
+          },
+          {
+            "rule_id": "DQ-02",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "regime_id",
+              "mostly": 1,
+              "value_set": [
+                "C",
+                "E",
+                "I",
+                "S"
+              ]
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      },
+      {
+        "suite": "primary_raw_affiliates_measures",
+        "rows": 3369,
+        "available": true,
+        "expectations_total": 2,
+        "expectations_passed": 2,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-03",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "num_persons_num",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-03",
+            "expectation": "expect_column_values_to_be_between",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "num_persons_num",
+              "mostly": 1,
+              "min_value": 0.0,
+              "strict_min": false,
+              "strict_max": false
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      },
+      {
+        "suite": "primary_raw_facilities",
+        "rows": 41427,
+        "available": true,
+        "expectations_total": 7,
+        "expectations_passed": 7,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-04",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "provider_code",
+              "mostly": 0.995
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-04",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "provider_name",
+              "mostly": 0.995
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-04",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "department",
+              "mostly": 0.995
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-04",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "municipality",
+              "mostly": 0.995
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-04",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "installed_capacity",
+              "mostly": 0.995
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-05",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "installed_capacity",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-05",
+            "expectation": "expect_column_values_to_be_between",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "installed_capacity_num",
+              "mostly": 1,
+              "min_value": 0.0,
+              "strict_min": false,
+              "strict_max": false
+            },
+            "success": true,
+            "observed": {
+              "element_count": 41427,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "evaluations": [
+    {
+      "rule_id": "DQ-01",
+      "description": "Mandatory columns in raw affiliates must not be missing or completely null",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "missing_columns": [],
+        "total_columns": 8,
+        "gx": {
+          "expectations": 1,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-01",
+          "expectation": "expect_table_columns_to_match_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": false,
+            "severity": "critical",
+            "column_set": [
+              "department",
+              "department_code",
+              "month",
+              "municipality",
+              "municipality_code",
+              "num_persons",
+              "regime_id",
+              "year"
+            ],
+            "exact_match": true
+          },
+          "success": true,
+          "observed": {
+            "observed_value": [
+              "department",
+              "department_code",
+              "month",
+              "municipality",
+              "municipality_code",
+              "num_persons",
+              "regime_id",
+              "year"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-02",
+      "description": "Healthcare regime code must belong to allowed set {S, C, E, I}",
+      "severity": "CRITICAL",
+      "success": false,
+      "details": {
+        "invalid_regimes": [
+          "INVALID_Z"
+        ],
+        "found_regimes": [
+          "S",
+          "I",
+          "E",
+          "C",
+          "INVALID_Z"
+        ],
+        "gx": {
+          "expectations": 1,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-02",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "regime_id",
+            "mostly": 1,
+            "value_set": [
+              "C",
+              "E",
+              "I",
+              "S"
+            ]
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-03",
+      "description": "Affiliate count must be non-negative and parseable as numeric",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "negative_count": 0,
+        "null_count": 0,
+        "gx": {
+          "expectations": 2,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-03",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "num_persons_num",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-03",
+          "expectation": "expect_column_values_to_be_between",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "num_persons_num",
+            "mostly": 1,
+            "min_value": 0.0,
+            "strict_min": false,
+            "strict_max": false
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-04",
+      "description": "Essential facility identity and capacity attributes must be present",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "missing_columns": [],
+        "gx": {
+          "expectations": 5,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-04",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "provider_code",
+            "mostly": 0.995
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-04",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "provider_name",
+            "mostly": 0.995
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-04",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "department",
+            "mostly": 0.995
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-04",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "municipality",
+            "mostly": 0.995
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-04",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "installed_capacity",
+            "mostly": 0.995
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-05",
+      "description": "Installed capacity measure must be non-negative (>= 0)",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "negative_capacity_count": 0,
+        "gx": {
+          "expectations": 2,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-05",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "installed_capacity",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-05",
+          "expectation": "expect_column_values_to_be_between",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "installed_capacity_num",
+            "mostly": 1,
+            "min_value": 0.0,
+            "strict_min": false,
+            "strict_max": false
+          },
+          "success": true,
+          "observed": {
+            "element_count": 41427,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    }
+  ]
+}

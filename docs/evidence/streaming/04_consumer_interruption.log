@@ -1,0 +1,75 @@
+=== Experimento: interrupción del consumidor Kafka ===
+Fecha UTC: 2026-11-09T01:48:16Z
+
+--- [1/3] Estado NORMAL (consumidor activo) ---
+ consumer-1 | status=running | eventos=1 | invalidos=2 | ultimo=2026-11-09 01:48:16.565284+00 | hace=0s
+
+
+--- [2/3] INTERRUPCIÓN: podman stop streaming_consumer_salud (SIGTERM -> status=stopped) ---
+streaming_consumer_salud
+[01:48:37Z] heartbeat tras 20s de caída:
+ consumer-1 | status=stopped | ultimo=2026-11-09 01:48:17.567513+00 | hace=20s (>15s = OFFLINE)
+
+captura dashboard en estado OFFLINE...
+→ instalando requirements.txt con uv ...
+Resolved 56 packages in 1.06s
+Prepared 1 package in 467ms
+Uninstalled 1 package in 5ms
+Installed 1 package in 10ms
+ - protobuf==7.36.2
+ + protobuf==6.33.6
+
+╔══════════════════════════════════════════════════════════╗
+║  ETL 2026-2 — Health Colombia ODS 3 (batch + streaming)  ║
+╚══════════════════════════════════════════════════════════╝
+
+Python:  Python 3.12.14
+uv:      uv 0.11.21 (x86_64-unknown-linux-gnu)
+podman:  podman version 5.8.6
+psql:    psql (PostgreSQL)
+
+Quick start (paso a paso completo en README.md):
+  cp .env.example .env                          # configuración local
+  podman-compose up -d                          # postgres+airflow+superset+kafka+streaming
+  podman-compose run --rm etl python -m src.etl_main   # ETL batch manual
+  pytest -q                                     # suite de tests
+  python -m src.streaming.producer --mode replay --loop # simular eventos
+  python -m scripts.streaming_demo --listen 5   # ver eventos del topic
+  open http://localhost:8080 (Airflow) · 8088 (Superset) · 8501 (tiempo real)
+
+Extras:  uv pip install <pkg>  ·  jupyter lab  ·  kcat -L -b localhost:19092
+
+OK docs/evidence/screenshots/streamlit_consumer_offline.png
+
+--- [3/3] RECUPERACIÓN: podman start streaming_consumer_salud ---
+streaming_consumer_salud
+ consumer-1 | status=running | ultimo=2026-11-09 01:49:03.7504+00 | hace=1s (ONLINE)
+
+captura dashboard recuperado...
+
+╔══════════════════════════════════════════════════════════╗
+║  ETL 2026-2 — Health Colombia ODS 3 (batch + streaming)  ║
+╚══════════════════════════════════════════════════════════╝
+
+Python:  Python 3.12.14
+uv:      uv 0.11.21 (x86_64-unknown-linux-gnu)
+podman:  podman version 5.8.6
+psql:    psql (PostgreSQL)
+
+Quick start (paso a paso completo en README.md):
+  cp .env.example .env                          # configuración local
+  podman-compose up -d                          # postgres+airflow+superset+kafka+streaming
+  podman-compose run --rm etl python -m src.etl_main   # ETL batch manual
+  pytest -q                                     # suite de tests
+  python -m src.streaming.producer --mode replay --loop # simular eventos
+  python -m scripts.streaming_demo --listen 5   # ver eventos del topic
+  open http://localhost:8080 (Airflow) · 8088 (Superset) · 8501 (tiempo real)
+
+Extras:  uv pip install <pkg>  ·  jupyter lab  ·  kcat -L -b localhost:19092
+
+OK docs/evidence/screenshots/streamlit_consumer_recovered.png
+
+[01:49:14Z] logs del consumidor durante la caída/arranque:
+2026-11-09 01:48:16,823 INFO    streaming.consumer: signal 15 received: draining and shutting down...
+2026-11-09 01:48:17,572 INFO    streaming.consumer: consumer consumer-1 stopped | processed=1 invalid=2
+2026-11-09 01:48:48,729 INFO    streaming.consumer: consumer consumer-1 starting | topic=salud.metric.updates group=health-metrics-consumers bootstrap=kafka:9092

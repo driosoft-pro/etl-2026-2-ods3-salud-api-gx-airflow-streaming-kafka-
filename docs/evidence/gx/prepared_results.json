@@ -1,0 +1,606 @@
+{
+  "gate": "prepared_data_validation",
+  "executed_at": "2026-11-09T02:15:26.491293+00:00",
+  "total_rules": 5,
+  "passed_rules": 5,
+  "failed_rules": 0,
+  "has_critical_failure": false,
+  "gx": {
+    "available": true,
+    "library": "great_expectations",
+    "version": "1.24.1",
+    "mode": "ephemeral",
+    "suites_requested": 2,
+    "suites_run": 2,
+    "expectations_total": 9,
+    "expectations_passed": 9,
+    "expectations_failed": 0,
+    "failed_rules": [],
+    "suites": [
+      {
+        "suite": "prepared_fact_affiliates",
+        "rows": 3369,
+        "available": true,
+        "expectations_total": 4,
+        "expectations_passed": 4,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-09",
+            "expectation": "expect_column_values_to_be_unique",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "grain_key",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_time",
+              "mostly": 1,
+              "value_set": [
+                1,
+                2
+              ]
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_geografia",
+              "mostly": 1,
+              "value_set": {
+                "size": 2240,
+                "sample": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10
+                ]
+              }
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_regime",
+              "mostly": 1,
+              "value_set": [
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            "success": true,
+            "observed": {
+              "element_count": 3369,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      },
+      {
+        "suite": "prepared_fact_capacity",
+        "rows": 31496,
+        "available": true,
+        "expectations_total": 5,
+        "expectations_passed": 5,
+        "expectations_failed": 0,
+        "expectations": [
+          {
+            "rule_id": "DQ-10",
+            "expectation": "expect_column_values_to_be_unique",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "grain_key",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 31496,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_time",
+              "mostly": 1,
+              "value_set": [
+                1,
+                2
+              ]
+            },
+            "success": true,
+            "observed": {
+              "element_count": 31496,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_facility",
+              "mostly": 1,
+              "value_set": {
+                "size": 10921,
+                "sample": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10
+                ]
+              }
+            },
+            "success": true,
+            "observed": {
+              "element_count": 31496,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_capacity_type",
+              "mostly": 1,
+              "value_set": {
+                "size": 63,
+                "sample": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10
+                ]
+              }
+            },
+            "success": true,
+            "observed": {
+              "element_count": 31496,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-11",
+            "expectation": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "sk_geografia",
+              "mostly": 1,
+              "value_set": {
+                "size": 2240,
+                "sample": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10
+                ]
+              }
+            },
+            "success": true,
+            "observed": {
+              "element_count": 31496,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0,
+              "unexpected_percent_total": 0.0,
+              "missing_count": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "evaluations": [
+    {
+      "rule_id": "DQ-08",
+      "description": "At least 95% of departments in primary data must resolve to API Colombia records",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "departments_total": 34,
+        "departments_enriched": 33,
+        "match_rate_pct": 97.06,
+        "threshold": "95.0%"
+      }
+    },
+    {
+      "rule_id": "DQ-09",
+      "description": "Declared grain of fact_affiliates (time, geo, regime) must be unique with zero duplicate rows",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "duplicate_rows": 0,
+        "total_rows": 3369,
+        "gx": {
+          "expectations": 1,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-09",
+          "expectation": "expect_column_values_to_be_unique",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "grain_key",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-10",
+      "description": "Declared grain of fact_facility_capacity must be unique with zero duplicates",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "duplicate_rows": 0,
+        "total_rows": 31496,
+        "gx": {
+          "expectations": 1,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-10",
+          "expectation": "expect_column_values_to_be_unique",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "grain_key",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 31496,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-11",
+      "description": "Every foreign key in fact tables must exist in the respective dimension (zero orphans)",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "orphan_fk_violations": [],
+        "gx": {
+          "expectations": 7,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_time",
+            "mostly": 1,
+            "value_set": [
+              1,
+              2
+            ]
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_geografia",
+            "mostly": 1,
+            "value_set": {
+              "size": 2240,
+              "sample": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
+            }
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_regime",
+            "mostly": 1,
+            "value_set": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "success": true,
+          "observed": {
+            "element_count": 3369,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_time",
+            "mostly": 1,
+            "value_set": [
+              1,
+              2
+            ]
+          },
+          "success": true,
+          "observed": {
+            "element_count": 31496,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_facility",
+            "mostly": 1,
+            "value_set": {
+              "size": 10921,
+              "sample": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
+            }
+          },
+          "success": true,
+          "observed": {
+            "element_count": 31496,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_capacity_type",
+            "mostly": 1,
+            "value_set": {
+              "size": 63,
+              "sample": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
+            }
+          },
+          "success": true,
+          "observed": {
+            "element_count": 31496,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        },
+        {
+          "rule_id": "DQ-11",
+          "expectation": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "sk_geografia",
+            "mostly": 1,
+            "value_set": {
+              "size": 2240,
+              "sample": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
+            }
+          },
+          "success": true,
+          "observed": {
+            "element_count": 31496,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "missing_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "rule_id": "DQ-12",
+      "description": "Sum of numero_afiliados in fact table must reconcile with raw person totals within 0.01% tolerance",
+      "severity": "CRITICAL",
+      "success": true,
+      "details": {
+        "fact_total": 51182238,
+        "note": "No raw total provided, bypassed"
+      }
+    }
+  ]
+}
