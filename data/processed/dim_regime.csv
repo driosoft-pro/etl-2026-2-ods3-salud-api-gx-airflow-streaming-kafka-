@@ -1,0 +1,5 @@
+code,description,sk_regime
+S,SUBSIDIZED,1
+E,SPECIAL,2
+C,CONTRIBUTORY,3
+I,INDIVIDUAL,4

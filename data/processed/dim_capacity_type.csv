@@ -1,0 +1,64 @@
+group,description,sk_capacity_type
+SALAS,Procedimientos,1
+CAMAS,TPR,2
+CAMAS,Pediátrica,3
+CAMAS,Adultos,4
+CAMAS,Atención del Parto,5
+CAMILLAS,Observación Pediátrica,6
+CAMILLAS,Observación Adultos Hombres,7
+CAMILLAS,Observación Adultos Mujeres,8
+CONSULTORIOS,Urgencias,9
+CONSULTORIOS,Consulta Externa,10
+SALAS,Partos,11
+UNIDAD MOVIL,Unidad Móvil,12
+CAMAS,Cuidado Intermedio Pediátrico,13
+CAMAS,Cuidado Intermedio Adulto,14
+CAMAS,Cuna Intermedia Pediátrica,15
+SALAS,Quirófano,16
+SALAS,Sala de Cirugía,17
+AMBULANCIAS,Básica,18
+CAMAS,Intermedia Adultos,19
+CAMAS,SPA Básico Adultos,20
+CAMAS,SPA Básico Pediátricos,21
+SILLAS,SPA,22
+SILLAS,Sillas de Hemodiálisis,23
+CAMAS,Salud Mental Adulto,24
+AMBULANCIAS,Medicalizada,25
+CAMAS,Incubadora Intermedia Neonatal,26
+CAMAS,Incubadora Intensiva Neonatal,27
+CAMAS,Intensiva Adultos,28
+CAMAS,Cuna Básico Neonatal,29
+SILLAS,Sillas de Quimioterapia,30
+CAMAS,Farmacodependencia,31
+CAMAS,Salud Mental Pediátrico,32
+CAMAS,SPA Adultos,33
+SILLAS,Salud Mental,34
+CAMAS,Obstetricia,35
+CAMAS,SPA Pediátricas,36
+CAMAS,Incubadora Básico Neonatal,37
+CAMAS,Cuna Intermedia Neonatal,38
+CAMAS,Cuna Intensiva Neonatal,39
+CAMAS,Paciente crónico sin ventilador,40
+CAMILLAS,Otras patologías,41
+CAMAS,Cuidado Intermedio Neonatal,42
+CAMAS,Cuidado Intensivo Neonatal,43
+CAMAS,Cuidado Intensivo Adulto,44
+CAMAS,Cuidado básico neonatal,45
+SALAS,Sala de Radioterapia,46
+CAMAS,Intermedia Pediátrica,47
+CAMAS,Intensiva Pediátrica,48
+CAMAS,Cuna Intensiva Pediátrica,49
+CAMAS,Cuidado Intensivo Pediátrico,50
+CAMAS,Transplante de progenitores hematopoyeticos,51
+CAMAS,Intensiva Quemado Adulto,52
+CAMAS,Intensiva Quemado pediátrica,53
+CAMILLAS,SPA,54
+CAMAS,Paciente crónico con ventilador,55
+SILLAS,Otras patologías,56
+CAMAS,Salud Mental,57
+CAMILLAS,Salud Mental,58
+CAMAS,Unidad de Quemados Adulto,59
+CAMAS,Unidad de Quemados Pediátrico,60
+CAMAS,Institución Paciente Crónico,61
+CAMAS,Psiquiatría,62
+CAMAS,Cuidado Agudo Mental,63
