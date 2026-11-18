@@ -225,15 +225,35 @@ step() {
   read -r -p "$1 [Enter=continuar / q=cancelar]: " answer
   [[ "$answer" != q ]] || { echo 'Cancelado; se conservan pasos completados.'; return 1; }
 }
+send_streaming_demo() {
+  local flag="$1" engine="${2:-}"
+  if [[ -z "$engine" ]]; then
+    read -r -p 'Motor para esta demo [docker/podman] (Enter=docker): ' engine
+    engine="${engine:-docker}"
+  fi
+  case "$engine" in docker|podman) ;; *) echo 'Motor invalido: usa docker o podman.' >&2; return 1;; esac
+  command -v "$engine" >/dev/null || { echo "No se encontro $engine en PATH." >&2; return 1; }
+  echo "Publicando evento de demostracion: $engine exec streaming_producer_salud python -m scripts.streaming_demo $flag"
+  if ! "$engine" exec streaming_producer_salud python -m scripts.streaming_demo "$flag"; then
+    echo "La demo fallo. Comprueba que $engine y streaming_producer_salud esten iniciados y Kafka este disponible." >&2
+    return 1
+  fi
+  echo 'Demo enviada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.'
+}
 execute() {
   case "$1" in help|--help|-h)
     echo 'bash start.sh [start|stop|validate|reset|wipe|steps|auto|restart|setup|links|kafka|kafka-live]'
     echo 'reset/restart conservan datos; wipe/steps/auto piden ELIMINAR y borran datos.'
+    echo 'Demos: bash start.sh [inject-json-invalid|inject-alert|inject-invalid] [docker|podman]'
+    echo 'Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=docker).'
     return;; esac
   case "$1" in
     10|links) show_links; return;;
     11|kafka) show_kafka; return;;
     12|kafka-live|live) show_kafka_live; return;;
+    13|inject-json-invalid) send_streaming_demo --inject-json-invalid "${2:-}"; return;;
+    14|inject-alert) send_streaming_demo --inject-alert "${2:-}"; return;;
+    15|inject-invalid) send_streaming_demo --inject-invalid "${2:-}"; return;;
   esac
   prepare
   case "$1" in
@@ -256,7 +276,7 @@ execute() {
   esac
 }
 if [[ "${1:-menu}" != menu ]]; then
-  execute "$1"
+  execute "$1" "${2:-}"
 else
   while true; do
     printf '\nMENU DEL PROYECTO\n'
@@ -272,10 +292,13 @@ else
     printf ' 10  Mostrar todos los enlaces del proyecto\n'
     printf ' 11  Mostrar estado, topicos, lag y recursos de Kafka\n'
     printf ' 12  Monitorear Kafka en tiempo real (Ctrl+C para salir)\n'
+    printf ' 13  Demo: enviar JSON invalido (Docker/Podman)\n'
+    printf ' 14  Demo: enviar alerta valida (Docker/Podman)\n'
+    printf ' 15  Demo: enviar evento que incumple el contrato (Docker/Podman)\n'
     printf '  0  Salir\n'
     read -r -p 'Opcion: ' choice || break
     [[ "$choice" != 0 ]] || break
     # Run in its own shell: failures stop the sequence and return to the menu.
-    if ! bash "$ROOT/start.sh" "$choice"; then echo 'Operacion fallida o cancelada; revisa el mensaje anterior.' >&2; fi
+    if ! bash "$ROOT/start.sh" "$choice" "${2:-}"; then echo 'Operacion fallida o cancelada; revisa el mensaje anterior.' >&2; fi
   done
 fi

@@ -1,4 +1,4 @@
-param([string]$Action = 'menu')
+param([string]$Action = 'menu', [string]$Engine = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 Set-Location -LiteralPath $projectRoot
@@ -258,15 +258,32 @@ function Validate {
 function Step([string]$Text) {
     if ((Read-Host "$Text [Enter=continuar / q=cancelar]") -eq 'q') { throw 'Operacion cancelada; los pasos completados se conservan.' }
 }
+function Send-StreamingDemo([string]$Flag) {
+    $selectedEngine = $Engine
+    if (!$selectedEngine) { $selectedEngine = Read-Host 'Motor para esta demo [docker/podman] (Enter=docker)' }
+    if (!$selectedEngine) { $selectedEngine = 'docker' }
+    $selectedEngine = $selectedEngine.Trim().ToLowerInvariant()
+    if ($selectedEngine -notin 'docker','podman') { throw 'Motor invalido: usa docker o podman.' }
+    if (!(Get-Command $selectedEngine -ErrorAction SilentlyContinue)) { throw "No se encontro $selectedEngine en PATH." }
+    Write-Host "Publicando evento de demostracion: $selectedEngine exec streaming_producer_salud python -m scripts.streaming_demo $Flag"
+    & $selectedEngine exec streaming_producer_salud python -m scripts.streaming_demo $Flag
+    if ($LASTEXITCODE -ne 0) { throw "La demo fallo (codigo $LASTEXITCODE). Comprueba que $selectedEngine y streaming_producer_salud esten iniciados y Kafka este disponible." }
+    Write-Host 'Demo enviada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.'
+}
 function Execute([string]$Choice) {
     if ($Choice -in 'help','--help','-h') {
         Write-Host 'start.bat [start|stop|validate|reset|wipe|steps|auto|restart|setup|links|kafka|kafka-live]'
         Write-Host 'reset/restart conservan datos; wipe/steps/auto piden ELIMINAR y borran datos.'
+        Write-Host 'Demos: start.bat [inject-json-invalid|inject-alert|inject-invalid] [docker|podman]'
+        Write-Host 'Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=docker).'
         return
     }
     if ($Choice -in '10','links') { Show-Links; return }
     if ($Choice -in '11','kafka') { Show-Kafka; return }
     if ($Choice -in '12','kafka-live','live') { Show-KafkaLive; return }
+    if ($Choice -in '13','inject-json-invalid') { Send-StreamingDemo '--inject-json-invalid'; return }
+    if ($Choice -in '14','inject-alert') { Send-StreamingDemo '--inject-alert'; return }
+    if ($Choice -in '15','inject-invalid') { Send-StreamingDemo '--inject-invalid'; return }
     Prepare
     switch ($Choice) {
         { $_ -in '1','start' } { Start-Project }
@@ -304,6 +321,9 @@ try {
             Write-Host ' 10  Mostrar todos los enlaces del proyecto'
             Write-Host ' 11  Mostrar estado, topicos, lag y recursos de Kafka'
             Write-Host ' 12  Monitorear Kafka en tiempo real (Ctrl+C para salir)'
+            Write-Host ' 13  Demo: enviar JSON invalido (Docker/Podman)'
+            Write-Host ' 14  Demo: enviar alerta valida (Docker/Podman)'
+            Write-Host ' 15  Demo: enviar evento que incumple el contrato (Docker/Podman)'
             Write-Host '  0  Salir'
             $choice = Read-Host 'Opcion'
             if ([string]::IsNullOrWhiteSpace($choice) -or $choice -eq '0') { break }

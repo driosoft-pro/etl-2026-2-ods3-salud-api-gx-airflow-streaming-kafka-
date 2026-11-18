@@ -595,7 +595,31 @@ Sin argumentos abren el menú interactivo; con un argumento ejecutan una sola ac
 | 10 | `links` | Mostrar los enlaces y direcciones del proyecto sin necesitar Docker activo |
 | 11 | `kafka` | Mostrar salud, tópicos, particiones, grupos, lag, disco, CPU y memoria de Kafka |
 | 12 | `kafka-live` | Actualizar el monitoreo de Kafka cada cinco segundos hasta presionar `Ctrl+C` |
+| 13 | `inject-json-invalid` | Publicar un mensaje que no se puede interpretar como JSON |
+| 14 | `inject-alert` | Publicar una alerta válida de demostración (`threshold_alert`) |
+| 15 | `inject-invalid` | Publicar un evento que incumple el contrato de datos |
 | 0 | — | Salir |
+
+Las opciones **13–15** permiten elegir `docker` o `podman` (Enter selecciona Docker).
+Requieren el motor, Kafka y `streaming_producer_salud` iniciados; para observar el
+procesamiento también debe estar activo el consumidor. Publican eventos de prueba reales
+en Kafka y no reconstruyen los servicios. El consumidor debe rechazar los dos eventos
+inválidos y procesar la alerta válida; compruébalo en sus logs y en el dashboard en tiempo real.
+El segundo argumento selecciona el motor **solo para estas demos**:
+
+```powershell
+.\start.bat inject-json-invalid docker
+.\start.bat inject-alert docker
+.\start.bat inject-invalid docker
+```
+
+```bash
+bash start.sh inject-json-invalid podman
+bash start.sh inject-alert podman
+bash start.sh inject-invalid podman
+```
+
+En cualquiera de los dos scripts puedes sustituir `docker` por `podman` o viceversa.
 
 Ejemplos: `start.bat setup`, `start.bat validate`, `bash start.sh restart`.
 Para consultar direcciones: `start.bat links` o `bash start.sh links`. También aparecen

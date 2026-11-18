@@ -599,7 +599,19 @@ start.bat validate       # run a single action directly
 | 10 | Mostrar todos los enlaces del proyecto | `links` | Print every project URL (see [10.3](#103-links-to-view-the-data)); no Docker needed |
 | 11 | Mostrar estado, topicos, lag y recursos de Kafka | `kafka` | Point-in-time Kafka health, topics, consumer groups, lag, disk and resources |
 | 12 | Monitorear Kafka en tiempo real | `kafka-live` | Live refresh every 5 s, read-only; `Ctrl+C` exits |
+| 13 | Demo: enviar JSON invalido | `inject-json-invalid` | Publish a payload that cannot be parsed as JSON |
+| 14 | Demo: enviar alerta valida | `inject-alert` | Publish a valid demo threshold alert |
+| 15 | Demo: enviar evento que incumple el contrato | `inject-invalid` | Publish an event that violates the data contract |
 | 0 | Salir | — | Leave the menu |
+
+Options **13–15** ask for `docker` or `podman` (Enter defaults to Docker). Alternatively,
+use `start.bat inject-alert docker` or `bash start.sh inject-alert podman`; both launchers
+accept either engine as the second argument **for these demos only**. Substitute
+`inject-json-invalid` or `inject-invalid` for the other experiments. These actions publish
+actual test events without rebuilding services. The selected engine, Kafka and
+`streaming_producer_salud` must already be running. With the consumer running, check its
+logs and the real-time dashboard: both invalid events should be rejected and the valid
+alert should be processed.
 
 Options **5, 6 and 7** (`wipe`, `steps`, `auto`) require typing **`ELIMINAR`** and only
 touch this project's containers, volumes and verified data directories (`.pgdata`,
