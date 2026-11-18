@@ -602,16 +602,54 @@ start.bat validate       # run a single action directly
 | 13 | Demo: enviar JSON invalido | `inject-json-invalid` | Publish a payload that cannot be parsed as JSON |
 | 14 | Demo: enviar alerta valida | `inject-alert` | Publish a valid demo threshold alert |
 | 15 | Demo: enviar evento que incumple el contrato | `inject-invalid` | Publish an event that violates the data contract |
+| 16 | Demo: eventos validos | `simulate-valid` | User-selected count (default 60), 1 s pauses |
+| 17 | Demo: rafaga de eventos validos | `simulate-burst` | User-selected count (default 300), 0.05 s pauses |
+| 18 | Demo: eventos mixtos | `simulate-mixed` | User-selected count (default 60), metrics/alerts/rejects, 1 s pauses |
+| 19 | Escuchar 20 mensajes nuevos | `listen-events` | Show new messages with partition, offset, key and payload |
+| 20 | Resumen de eventos, estados y consumidor | `events-summary` | Read-only history totals, rejection reasons, consumer heartbeat and lag |
 | 0 | Salir | — | Leave the menu |
 
-Options **13–15** ask for `docker` or `podman` (Enter defaults to Docker). Alternatively,
-use `start.bat inject-alert docker` or `bash start.sh inject-alert podman`; both launchers
-accept either engine as the second argument **for these demos only**. Substitute
+Options **13–15** ask for **1 = Docker** or **2 = Podman** (Enter defaults to 1). Alternatively,
+use `start.bat inject-alert 1` or `bash start.sh inject-alert 2`; both launchers
+accept either number as the second argument **for these demos only** (engine names remain
+compatible with previous commands). Substitute
 `inject-json-invalid` or `inject-invalid` for the other experiments. These actions publish
 actual test events without rebuilding services. The selected engine, Kafka and
 `streaming_producer_salud` must already be running. With the consumer running, check its
 logs and the real-time dashboard: both invalid events should be rejected and the valid
 alert should be processed.
+
+Options **16–19** also accept **1 = Docker / 2 = Podman**.
+Options **16–18** first prompt for an integer count from **1 to 1000**; Enter uses
+60/300/60 respectively. Invalid input is requested again before publishing any events.
+This also applies to named actions, e.g.
+`start.bat simulate-valid 1` or `bash start.sh simulate-mixed 2`. Open the real-time
+dashboard (option 10 lists links). Start option 19 in a second terminal before sending
+events; it exits after 20 new messages or 30 idle seconds. Simulations finish after
+their configured count; Kafka acknowledgement time is added to each pause.
+With a running consumer, watch processed events, events/minute, affiliates, capacity,
+net delta and time series. Mixed traffic also exercises alerts and rejection handling:
+with 60 messages and no other traffic, expect 48 processed (including 6 alerts) and
+12 invalid events. Each block of ten sends seven updates, one alert and two invalid
+messages, in that order; the final block is partial when the count is not a multiple of ten.
+Kafka acknowledgement alone does not confirm consumer processing.
+
+Valid synthetic messages carry `source.mode=demo` and `simulation=true`. They update
+existing streaming department keys for Bogotá, Antioquia and Valle del Cauca, leaving
+persistent history and observed values until further updates arrive for those keys.
+DW tables are unchanged. Intentionally invalid payloads may lack source metadata.
+No image rebuild is needed because Compose mounts `scripts/` into the container.
+
+**Option 20:** choose **1 = Docker / 2 = Podman**, or run `start.bat events-summary 1`
+or `bash start.sh events-summary 2`. Requires PostgreSQL and `streaming_producer_salud`
+to run the query. It shows all retained processed/rejected totals, alerts (a subset of
+processed events), simulation/replay counts, metric/rejection breakdowns, consumer
+heartbeat and the latest 20 records with IDs and states. Dates are UTC. PostgreSQL
+queries are read-only, and Kafka offsets are inspected without consuming or committing.
+Unknown offsets/unavailable Kafka are reported as unknown pending work. Lag may include
+stored records awaiting offset commit, so it is not an individual event state. History
+excludes wiped data and sends not yet persisted; valid events are deduplicated by UUID,
+while rejected counts represent stored rejection records.
 
 Options **5, 6 and 7** (`wipe`, `steps`, `auto`) require typing **`ELIMINAR`** and only
 touch this project's containers, volumes and verified data directories (`.pgdata`,

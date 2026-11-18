@@ -598,9 +598,14 @@ Sin argumentos abren el menú interactivo; con un argumento ejecutan una sola ac
 | 13 | `inject-json-invalid` | Publicar un mensaje que no se puede interpretar como JSON |
 | 14 | `inject-alert` | Publicar una alerta válida de demostración (`threshold_alert`) |
 | 15 | `inject-invalid` | Publicar un evento que incumple el contrato de datos |
+| 16 | `simulate-valid` | Cantidad a elegir de actualizaciones válidas, con pausa de 1 s (predeterminado: 60) |
+| 17 | `simulate-burst` | Ráfaga de actualizaciones válidas, cantidad a elegir, pausa de 0.05 s (predeterminado: 300) |
+| 18 | `simulate-mixed` | Cantidad a elegir de métricas, alertas e inválidos, pausa de 1 s (predeterminado: 60) |
+| 19 | `listen-events` | Escuchar hasta 20 mensajes nuevos con partición, offset, clave y contenido |
+| 20 | `events-summary` | Resumen de todo el historial disponible, estados, rechazos, consumidor y lag |
 | 0 | — | Salir |
 
-Las opciones **13–15** permiten elegir `docker` o `podman` (Enter selecciona Docker).
+Las opciones **13–15** permiten elegir **1 = Docker** o **2 = Podman** (Enter selecciona 1).
 Requieren el motor, Kafka y `streaming_producer_salud` iniciados; para observar el
 procesamiento también debe estar activo el consumidor. Publican eventos de prueba reales
 en Kafka y no reconstruyen los servicios. El consumidor debe rechazar los dos eventos
@@ -608,18 +613,68 @@ inválidos y procesar la alerta válida; compruébalo en sus logs y en el dashbo
 El segundo argumento selecciona el motor **solo para estas demos**:
 
 ```powershell
-.\start.bat inject-json-invalid docker
-.\start.bat inject-alert docker
-.\start.bat inject-invalid docker
+.\start.bat inject-json-invalid 1
+.\start.bat inject-alert 1
+.\start.bat inject-invalid 1
 ```
 
 ```bash
-bash start.sh inject-json-invalid podman
-bash start.sh inject-alert podman
-bash start.sh inject-invalid podman
+bash start.sh inject-json-invalid 2
+bash start.sh inject-alert 2
+bash start.sh inject-invalid 2
 ```
 
-En cualquiera de los dos scripts puedes sustituir `docker` por `podman` o viceversa.
+En ambos scripts usa `1` para Docker o `2` para Podman. Los nombres anteriores siguen
+siendo compatibles como argumentos, pero no necesitas escribirlos.
+
+**Demostración en vivo (opciones 16–19):** también solicitan **1 = Docker / 2 = Podman**.
+Las opciones **16–18** primero preguntan cuántos eventos enviar: un entero de **1 a 1000**.
+Enter usa **60, 300 y 60**, respectivamente. Si la cantidad es inválida se vuelve a
+preguntar sin publicar mensajes. Esto aplica también al ejecutar la acción por nombre.
+Abre el dashboard en tiempo real (enlace en la opción 10). En una terminal ejecuta
+la opción 19 y, en otra, la 16, 17 o 18; la escucha termina al recibir 20 mensajes o
+tras 30 segundos sin mensajes. La simulación termina sola al completar su cantidad;
+las pausas indicadas se suman al tiempo de confirmación de Kafka. Por ejemplo:
+
+```powershell
+.\start.bat simulate-valid 1
+.\start.bat simulate-burst 1
+.\start.bat simulate-mixed 1
+```
+
+En Bash: `bash start.sh simulate-valid 2` (o cualquiera de los otros nombres).
+Las opciones 16 y 17 generan valores sintéticos variables para Bogotá, Antioquia y
+Valle del Cauca. Observa eventos procesados, eventos/minuto, afiliados, delta neto,
+capacidad y las gráficas. La 18 añade alertas y rechazos. El consumidor debe estar
+activo: **enviado/confirmado por Kafka no significa procesado por el consumidor**.
+Con 60 mensajes y sin otro tráfico, la 18 debe sumar 48 procesados (incluidas 6 alertas)
+y 12 inválidos. Cada bloque de 10 envía 7 actualizaciones, 1 alerta y 2 inválidos,
+en ese orden; si la cantidad no es múltiplo de 10, el último bloque queda parcial.
+Los cambios aparecen después del procesamiento y del refresco del dashboard.
+
+Los mensajes válidos llevan `source.mode=demo` y `simulation=true`. Usan las claves
+existentes de departamento, por lo que cambian los valores observados del streaming
+y dejan historial persistente de la simulación; no modifican las tablas del DW.
+Los valores observados permanecen hasta recibir nuevas actualizaciones para esas
+claves. Los mensajes intencionalmente inválidos no garantizan metadatos de fuente.
+Puedes observar actividad y lag con la opción 12 (Docker); una ráfaga pequeña puede
+procesarse tan rápido que el lag no llegue a verse. No hace falta reconstruir la
+imagen: Compose monta `scripts/` en el contenedor.
+
+**Resumen final (opción 20):** elige **1 = Docker / 2 = Podman**, o ejecuta
+`start.bat events-summary 1` / `bash start.sh events-summary 2`. Consulta PostgreSQL
+en modo de solo lectura: totales procesados y rechazados de todas las ejecuciones
+conservadas, alertas (incluidas en procesados), simulación/replay, desglose por métrica
+y motivo de rechazo, estado/heartbeat del consumidor y los 20 registros más recientes
+con su ID y estado. Las fechas se muestran en UTC. Requiere PostgreSQL y el contenedor
+`streaming_producer_salud` iniciado para ejecutar la consulta.
+
+También consulta el lag por partición del grupo configurado sin consumir ni confirmar
+mensajes. Si Kafka no responde o no existe offset confirmado, el pendiente se indica
+como desconocido. El lag puede incluir eventos ya guardados pero aún sin confirmar en
+Kafka; no representa un estado individual de cada evento. Los totales abarcan todo el
+historial disponible, no los datos borrados al vaciar volúmenes ni envíos todavía sin
+guardar. Los válidos se deduplican por `event_id`; los rechazos cuentan registros.
 
 Ejemplos: `start.bat setup`, `start.bat validate`, `bash start.sh restart`.
 Para consultar direcciones: `start.bat links` o `bash start.sh links`. También aparecen

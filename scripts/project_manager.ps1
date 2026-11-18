@@ -258,24 +258,41 @@ function Validate {
 function Step([string]$Text) {
     if ((Read-Host "$Text [Enter=continuar / q=cancelar]") -eq 'q') { throw 'Operacion cancelada; los pasos completados se conservan.' }
 }
-function Send-StreamingDemo([string]$Flag) {
+function Read-DemoCount([int]$DefaultCount) {
+    while ($true) {
+        $answer = Read-Host "Cantidad de eventos [1-1000] (Enter=$DefaultCount)"
+        if ([string]::IsNullOrWhiteSpace($answer)) { return $DefaultCount }
+        $answer = $answer.Trim()
+        if ($answer -match '^[1-9][0-9]{0,3}$' -and [int]$answer -le 1000) { return [int]$answer }
+        Write-Host 'Cantidad invalida: escribe un entero entre 1 y 1000.' -ForegroundColor Yellow
+    }
+}
+function Send-StreamingDemo([string[]]$DemoArgs) {
     $selectedEngine = $Engine
-    if (!$selectedEngine) { $selectedEngine = Read-Host 'Motor para esta demo [docker/podman] (Enter=docker)' }
-    if (!$selectedEngine) { $selectedEngine = 'docker' }
+    if (!$selectedEngine) { $selectedEngine = Read-Host 'Motor [1=Docker / 2=Podman] (Enter=1)' }
+    if (!$selectedEngine) { $selectedEngine = '1' }
     $selectedEngine = $selectedEngine.Trim().ToLowerInvariant()
-    if ($selectedEngine -notin 'docker','podman') { throw 'Motor invalido: usa docker o podman.' }
+    switch ($selectedEngine) {
+        '1' { $selectedEngine = 'docker' }
+        '2' { $selectedEngine = 'podman' }
+    }
+    if ($selectedEngine -notin 'docker','podman') { throw 'Motor invalido: selecciona 1 (Docker) o 2 (Podman).' }
     if (!(Get-Command $selectedEngine -ErrorAction SilentlyContinue)) { throw "No se encontro $selectedEngine en PATH." }
-    Write-Host "Publicando evento de demostracion: $selectedEngine exec streaming_producer_salud python -m scripts.streaming_demo $Flag"
-    & $selectedEngine exec streaming_producer_salud python -m scripts.streaming_demo $Flag
+    Write-Host "Ejecutando demo: $selectedEngine exec streaming_producer_salud python -u -m scripts.streaming_demo $DemoArgs"
+    & $selectedEngine exec streaming_producer_salud python -u -m scripts.streaming_demo @DemoArgs
     if ($LASTEXITCODE -ne 0) { throw "La demo fallo (codigo $LASTEXITCODE). Comprueba que $selectedEngine y streaming_producer_salud esten iniciados y Kafka este disponible." }
-    Write-Host 'Demo enviada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.'
+    if ($DemoArgs -contains '--summary') { Write-Host 'Consulta terminada (solo lectura).' }
+    else { Write-Host 'Demo terminada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.' }
 }
 function Execute([string]$Choice) {
     if ($Choice -in 'help','--help','-h') {
         Write-Host 'start.bat [start|stop|validate|reset|wipe|steps|auto|restart|setup|links|kafka|kafka-live]'
         Write-Host 'reset/restart conservan datos; wipe/steps/auto piden ELIMINAR y borran datos.'
-        Write-Host 'Demos: start.bat [inject-json-invalid|inject-alert|inject-invalid] [docker|podman]'
-        Write-Host 'Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=docker).'
+        Write-Host 'Demos: start.bat [inject-json-invalid|inject-alert|inject-invalid] [1|2]'
+        Write-Host 'Mas demos: start.bat [simulate-valid|simulate-burst|simulate-mixed|listen-events] [1|2]'
+        Write-Host 'Resumen: start.bat events-summary [1|2] (opcion 20, solo lectura)'
+        Write-Host 'Opciones 16/17/18 preguntan la cantidad de eventos (1-1000; Enter=60/300/60).'
+        Write-Host 'Motor: 1=Docker, 2=Podman. Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=1).'
         return
     }
     if ($Choice -in '10','links') { Show-Links; return }
@@ -284,6 +301,11 @@ function Execute([string]$Choice) {
     if ($Choice -in '13','inject-json-invalid') { Send-StreamingDemo '--inject-json-invalid'; return }
     if ($Choice -in '14','inject-alert') { Send-StreamingDemo '--inject-alert'; return }
     if ($Choice -in '15','inject-invalid') { Send-StreamingDemo '--inject-invalid'; return }
+    if ($Choice -in '16','simulate-valid') { $count = Read-DemoCount 60; Send-StreamingDemo @('--simulate','valid','--count',"$count",'--interval','1'); return }
+    if ($Choice -in '17','simulate-burst') { $count = Read-DemoCount 300; Send-StreamingDemo @('--simulate','valid','--count',"$count",'--interval','0.05'); return }
+    if ($Choice -in '18','simulate-mixed') { $count = Read-DemoCount 60; Send-StreamingDemo @('--simulate','mixed','--count',"$count",'--interval','1'); return }
+    if ($Choice -in '19','listen-events') { Send-StreamingDemo @('--listen','20'); return }
+    if ($Choice -in '20','events-summary') { Send-StreamingDemo '--summary'; return }
     Prepare
     switch ($Choice) {
         { $_ -in '1','start' } { Start-Project }
@@ -324,6 +346,11 @@ try {
             Write-Host ' 13  Demo: enviar JSON invalido (Docker/Podman)'
             Write-Host ' 14  Demo: enviar alerta valida (Docker/Podman)'
             Write-Host ' 15  Demo: enviar evento que incumple el contrato (Docker/Podman)'
+            Write-Host ' 16  Demo: eventos validos, uno por segundo (cantidad a elegir)'
+            Write-Host ' 17  Demo: rafaga de eventos validos (cantidad a elegir)'
+            Write-Host ' 18  Demo: eventos mixtos, metricas/alertas/invalidos (cantidad a elegir)'
+            Write-Host ' 19  Escuchar 20 mensajes nuevos de Kafka (abrir antes de simular)'
+            Write-Host ' 20  Resumen de eventos, estados y consumidor (solo lectura)'
             Write-Host '  0  Salir'
             $choice = Read-Host 'Opcion'
             if ([string]::IsNullOrWhiteSpace($choice) -or $choice -eq '0') { break }

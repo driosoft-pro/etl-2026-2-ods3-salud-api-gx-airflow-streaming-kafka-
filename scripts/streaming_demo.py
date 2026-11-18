@@ -12,9 +12,11 @@ Used to generate the evidence required by section 2.6 of the Final Delivery:
   * ``--inject-alert``     publish a valid ``threshold_alert`` event.
   * ``--listen N``         print the next N raw events from the topic
                            (proof of what actually flows through Kafka).
+  * ``--simulate valid|mixed --count N --interval S`` publish bounded synthetic
+                           affiliate/capacity updates, optionally alerts/rejects.
 
-All injected events carry ``source.mode='demo'`` so they can be told apart
-from producer traffic.
+Valid injected events carry ``source.mode='demo'`` and ``simulation=true``;
+intentionally invalid payloads may lack these fields.
 
 Usage:
     python -m scripts.streaming_demo --inject-invalid
@@ -28,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -132,6 +135,50 @@ def listen(count: int, timeout: int = 30) -> None:
     print(f"--- received {seen} event(s) ---")
 
 
+def simulate(producer: KafkaProducer, count: int, interval: float, mixed: bool = False) -> None:
+    """Publish bounded synthetic traffic through the normal consumer pipeline.
+
+    Uses existing department keys: observed streaming values change, DW rows do not.
+    Every ten mixed messages contain seven metric updates, one alert and two rejects.
+    """
+    departments = (("11", "BOGOTA D.C.", 8_000_000, 30_000),
+                   ("05", "ANTIOQUIA", 6_000_000, 25_000),
+                   ("76", "VALLE DEL CAUCA", 4_000_000, 18_000))
+    previous = {}
+    metric_index = 0
+    for index in range(count):
+        slot = index % 10
+        if mixed and slot == 7:
+            inject_alert(producer)
+        elif mixed and slot == 8:
+            inject_invalid(producer)
+        elif mixed and slot == 9:
+            inject_json_invalid(producer)
+        else:
+            code, department, affiliates, capacity = departments[(metric_index // 2) % 3]
+            is_capacity = metric_index % 2 == 1
+            name = "capacity_by_department" if is_capacity else "affiliates_by_department"
+            base = capacity if is_capacity else affiliates
+            key = f"{name}:{code}"
+            cycle = metric_index // 6 + 1
+            value = round(base * (1 + 0.025 * math.sin(cycle * 0.7)))
+            before = previous.get(key, base)
+            event = build_event(
+                event_type="metric_update", event_key=key, metric_name=name,
+                value=value, unit="slots" if is_capacity else "persons",
+                previous_value=before, delta=value - before,
+                dimension={"department_code": code, "department": department},
+                source=dict(DEMO_SOURCE),
+            )
+            producer.send(TOPIC, key=key, value=event).get(timeout=10)
+            previous[key] = value
+            metric_index += 1
+            log.info("published demo metric %s value=%s delta=%s", key, value, value - before)
+        log.info("demo progress: %d/%d acknowledged by Kafka (consumer processing is separate)", index + 1, count)
+        if index + 1 < count:
+            time.sleep(interval)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Streaming demo / experiments (ODS 3)")
     parser.add_argument("--inject-invalid", action="store_true",
@@ -143,7 +190,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--listen", type=int, metavar="N",
                         help="print the next N raw events from the topic")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--summary", action="store_true", help="read-only history, event states and consumer lag")
+    parser.add_argument("--simulate", choices=("valid", "mixed"),
+                        help="publish synthetic metric updates, optionally with alerts and rejects")
+    parser.add_argument("--count", type=int, default=60, help="simulation messages (1-1000)")
+    parser.add_argument("--interval", type=float, default=1.0, help="seconds between messages (0.05-10)")
     args = parser.parse_args(argv)
+    if args.summary:
+        from scripts.streaming_summary import main as summary_main
+        return summary_main()
+    if not 1 <= args.count <= 1000:
+        parser.error("--count must be between 1 and 1000")
+    if not math.isfinite(args.interval) or not 0.05 <= args.interval <= 10:
+        parser.error("--interval must be finite and between 0.05 and 10 seconds")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -152,14 +211,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     if not any([args.inject_invalid, args.inject_json_invalid,
-                args.inject_alert, args.listen]):
+                args.inject_alert, args.listen, args.simulate]):
         parser.print_help()
         return 1
 
     if args.listen:
         listen(args.listen)
 
-    if args.inject_invalid or args.inject_json_invalid or args.inject_alert:
+    if args.inject_invalid or args.inject_json_invalid or args.inject_alert or args.simulate:
         producer = _connect_producer()
         try:
             if args.inject_invalid:
@@ -168,6 +227,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 inject_json_invalid(producer)
             if args.inject_alert:
                 inject_alert(producer)
+            if args.simulate:
+                simulate(producer, args.count, args.interval, mixed=args.simulate == "mixed")
             producer.flush(timeout=10)
         finally:
             producer.close(timeout=10)

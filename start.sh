@@ -225,27 +225,49 @@ step() {
   read -r -p "$1 [Enter=continuar / q=cancelar]: " answer
   [[ "$answer" != q ]] || { echo 'Cancelado; se conservan pasos completados.'; return 1; }
 }
+read_demo_count() {
+  local default_count="$1" answer
+  while true; do
+    read -r -p "Cantidad de eventos [1-1000] (Enter=$default_count): " answer || return 1
+    answer="${answer%$'\r'}"
+    if [[ -z "$answer" ]]; then printf '%s' "$default_count"; return; fi
+    if [[ "$answer" =~ ^[1-9][0-9]{0,3}$ ]] && ((answer <= 1000)); then
+      printf '%s' "$answer"; return
+    fi
+    echo 'Cantidad invalida: escribe un entero entre 1 y 1000.' >&2
+  done
+}
 send_streaming_demo() {
   local flag="$1" engine="${2:-}"
+  shift 2
   if [[ -z "$engine" ]]; then
-    read -r -p 'Motor para esta demo [docker/podman] (Enter=docker): ' engine
-    engine="${engine:-docker}"
+    read -r -p 'Motor [1=Docker / 2=Podman] (Enter=1): ' engine
+    engine="${engine:-1}"
   fi
-  case "$engine" in docker|podman) ;; *) echo 'Motor invalido: usa docker o podman.' >&2; return 1;; esac
+  case "$engine" in
+    1|docker) engine=docker;;
+    2|podman) engine=podman;;
+    *) echo 'Motor invalido: selecciona 1 (Docker) o 2 (Podman).' >&2; return 1;;
+  esac
   command -v "$engine" >/dev/null || { echo "No se encontro $engine en PATH." >&2; return 1; }
-  echo "Publicando evento de demostracion: $engine exec streaming_producer_salud python -m scripts.streaming_demo $flag"
-  if ! "$engine" exec streaming_producer_salud python -m scripts.streaming_demo "$flag"; then
+  echo "Ejecutando demo: $engine exec streaming_producer_salud python -u -m scripts.streaming_demo $flag $*"
+  if ! "$engine" exec streaming_producer_salud python -u -m scripts.streaming_demo "$flag" "$@"; then
     echo "La demo fallo. Comprueba que $engine y streaming_producer_salud esten iniciados y Kafka este disponible." >&2
     return 1
   fi
-  echo 'Demo enviada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.'
+  if [[ "$flag" == --summary ]]; then echo 'Consulta terminada (solo lectura).'
+  else echo 'Demo terminada. Revisa el dashboard en tiempo real y los logs del consumidor para comprobar su procesamiento.'; fi
 }
 execute() {
+  local count
   case "$1" in help|--help|-h)
     echo 'bash start.sh [start|stop|validate|reset|wipe|steps|auto|restart|setup|links|kafka|kafka-live]'
     echo 'reset/restart conservan datos; wipe/steps/auto piden ELIMINAR y borran datos.'
-    echo 'Demos: bash start.sh [inject-json-invalid|inject-alert|inject-invalid] [docker|podman]'
-    echo 'Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=docker).'
+    echo 'Demos: bash start.sh [inject-json-invalid|inject-alert|inject-invalid] [1|2]'
+    echo 'Mas demos: bash start.sh [simulate-valid|simulate-burst|simulate-mixed|listen-events] [1|2]'
+    echo 'Resumen: bash start.sh events-summary [1|2] (opcion 20, solo lectura)'
+    echo 'Opciones 16/17/18 preguntan la cantidad de eventos (1-1000; Enter=60/300/60).'
+    echo 'Motor: 1=Docker, 2=Podman. Opciones 13/14/15 publican eventos de prueba. Si omites el motor, se pregunta (Enter=1).'
     return;; esac
   case "$1" in
     10|links) show_links; return;;
@@ -254,6 +276,11 @@ execute() {
     13|inject-json-invalid) send_streaming_demo --inject-json-invalid "${2:-}"; return;;
     14|inject-alert) send_streaming_demo --inject-alert "${2:-}"; return;;
     15|inject-invalid) send_streaming_demo --inject-invalid "${2:-}"; return;;
+    16|simulate-valid) count=$(read_demo_count 60); send_streaming_demo --simulate "${2:-}" valid --count "$count" --interval 1; return;;
+    17|simulate-burst) count=$(read_demo_count 300); send_streaming_demo --simulate "${2:-}" valid --count "$count" --interval 0.05; return;;
+    18|simulate-mixed) count=$(read_demo_count 60); send_streaming_demo --simulate "${2:-}" mixed --count "$count" --interval 1; return;;
+    19|listen-events) send_streaming_demo --listen "${2:-}" 20; return;;
+    20|events-summary) send_streaming_demo --summary "${2:-}"; return;;
   esac
   prepare
   case "$1" in
@@ -295,6 +322,11 @@ else
     printf ' 13  Demo: enviar JSON invalido (Docker/Podman)\n'
     printf ' 14  Demo: enviar alerta valida (Docker/Podman)\n'
     printf ' 15  Demo: enviar evento que incumple el contrato (Docker/Podman)\n'
+    printf ' 16  Demo: eventos validos, uno por segundo (cantidad a elegir)\n'
+    printf ' 17  Demo: rafaga de eventos validos (cantidad a elegir)\n'
+    printf ' 18  Demo: eventos mixtos, metricas/alertas/invalidos (cantidad a elegir)\n'
+    printf ' 19  Escuchar 20 mensajes nuevos de Kafka (abrir antes de simular)\n'
+    printf ' 20  Resumen de eventos, estados y consumidor (solo lectura)\n'
     printf '  0  Salir\n'
     read -r -p 'Opcion: ' choice || break
     [[ "$choice" != 0 ]] || break
