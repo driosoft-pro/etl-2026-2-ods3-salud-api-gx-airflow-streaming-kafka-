@@ -1,6 +1,6 @@
 {
   "gate": "primary_raw_validation",
-  "executed_at": "2026-11-09T02:15:23.714617+00:00",
+  "executed_at": "2026-11-18T08:17:48.463555+00:00",
   "total_rules": 5,
   "passed_rules": 4,
   "failed_rules": 1,
@@ -8,22 +8,24 @@
   "gx": {
     "available": true,
     "library": "great_expectations",
-    "version": "1.24.1",
+    "version": "1.23.1",
     "mode": "ephemeral",
     "suites_requested": 3,
     "suites_run": 3,
     "expectations_total": 11,
-    "expectations_passed": 11,
-    "expectations_failed": 0,
-    "failed_rules": [],
+    "expectations_passed": 10,
+    "expectations_failed": 1,
+    "failed_rules": [
+      "DQ-02"
+    ],
     "suites": [
       {
         "suite": "primary_raw_affiliates_schema",
         "rows": 3369,
         "available": true,
         "expectations_total": 2,
-        "expectations_passed": 2,
-        "expectations_failed": 0,
+        "expectations_passed": 1,
+        "expectations_failed": 1,
         "expectations": [
           {
             "rule_id": "DQ-01",
@@ -74,14 +76,23 @@
                 "S"
               ]
             },
-            "success": true,
+            "success": false,
             "observed": {
               "element_count": 3369,
-              "unexpected_count": 0,
-              "unexpected_percent": 0.0,
-              "unexpected_percent_total": 0.0,
+              "unexpected_count": 1,
+              "unexpected_percent": 0.029682398337785694,
+              "unexpected_percent_total": 0.029682398337785694,
               "missing_count": 0
-            }
+            },
+            "partial_unexpected_list": [
+              "INVALID_Z"
+            ],
+            "partial_unexpected_counts": [
+              {
+                "value": "INVALID_Z",
+                "count": 1
+              }
+            ]
           }
         ]
       },
@@ -331,16 +342,18 @@
           "INVALID_Z"
         ],
         "found_regimes": [
+          "INVALID_Z",
           "S",
           "I",
-          "E",
           "C",
-          "INVALID_Z"
+          "E"
         ],
         "gx": {
           "expectations": 1,
-          "failed": 0,
-          "failed_expectations": []
+          "failed": 1,
+          "failed_expectations": [
+            "expect_column_values_to_be_in_set(regime_id)"
+          ]
         }
       },
       "gx": [
@@ -360,14 +373,23 @@
               "S"
             ]
           },
-          "success": true,
+          "success": false,
           "observed": {
             "element_count": 3369,
-            "unexpected_count": 0,
-            "unexpected_percent": 0.0,
-            "unexpected_percent_total": 0.0,
+            "unexpected_count": 1,
+            "unexpected_percent": 0.029682398337785694,
+            "unexpected_percent_total": 0.029682398337785694,
             "missing_count": 0
-          }
+          },
+          "partial_unexpected_list": [
+            "INVALID_Z"
+          ],
+          "partial_unexpected_counts": [
+            {
+              "value": "INVALID_Z",
+              "count": 1
+            }
+          ]
         }
       ]
     },

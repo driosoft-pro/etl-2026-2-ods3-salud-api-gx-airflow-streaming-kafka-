@@ -1,14 +1,14 @@
 {
   "gate": "api_raw_validation",
-  "executed_at": "2026-11-09T02:15:23.788672+00:00",
+  "executed_at": "2026-11-18T08:17:47.671529+00:00",
   "total_rules": 2,
-  "passed_rules": 1,
-  "failed_rules": 1,
-  "has_critical_failure": true,
+  "passed_rules": 2,
+  "failed_rules": 0,
+  "has_critical_failure": false,
   "gx": {
     "available": true,
     "library": "great_expectations",
-    "version": "1.24.1",
+    "version": "1.23.1",
     "mode": "ephemeral",
     "suites_requested": 1,
     "suites_run": 1,
@@ -164,10 +164,10 @@
       "rule_id": "DQ-07",
       "description": "Official population and surface from API must be positive (> 0)",
       "severity": "CRITICAL",
-      "success": false,
+      "success": true,
       "details": {
-        "invalid_population_count": 5,
-        "invalid_surface_count": 3,
+        "invalid_population_count": 0,
+        "invalid_surface_count": 0,
         "gx": {
           "expectations": 2,
           "failed": 0,
