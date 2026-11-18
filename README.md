@@ -527,94 +527,124 @@ and shows:
 
 ### 10.1 Requirements
 
-- **Git**; **Python 3.12** (para el entorno virtual local);
-- **Docker Desktop** (con backend WSL2 en Windows) o **Podman ≥ 4 + `podman-compose`** en Linux;
-- ~4 GB de RAM libre para los 11 contenedores;
-- Sin dependencias externas de pago: las fuentes son los CSVs versionados en el repositorio y la API pública `api-colombia.com` (con caché de respaldo incluida en `data/raw/`).
+- **Git**; **Python 3.12** (optional: [Nix](flake.nix) dev shell with `uv`, podman, psql and chromium);
+- **Podman ≥ 4 + `podman-compose`** (Linux) or **Docker Desktop** with WSL2 backend + `docker compose` (Windows);
+- ~4 GB free RAM for the 11 containers;
+- No paid external dependencies: the only two sources are CSVs included in the repo and the public API `api-colombia.com` (with an included backup cache in `data/raw/`).
 
-### 10.2 Windows Quickstart (PowerShell + Docker Desktop) — Flujo Verificado
+### 10.2 Startup (step by step)
 
-Guía paso a paso reproducible y probada en Windows 11 con PowerShell y Docker Desktop:
+Choose the setup matching your operating system and container engine:
 
-#### Paso 1: Preparación del entorno y credenciales de Airflow
+#### Option A: Linux / Podman (rootless bash)
+
+```bash
+# 1) Clone
+git clone https://github.com/driosoft-pro/etl-2026-2-ods3-salud-api-gx-airflow-streaming-kafka-.git
+cd etl-2026-2-ods3-salud-api-gx-airflow-streaming-kafka-
+
+# 2) Local configuration (.env is NEVER committed)
+cp .env.example .env
+
+# 3) Airflow development login (SimpleAuthManager requires the file;
+#    without it Airflow generates a random password)
+printf '{"airflow": "airflow"}' > config/simple_auth_manager_passwords.json
+
+# 4) Start everything (PostgreSQL, Kafka, Airflow, Superset, streaming, Streamlit)
+podman-compose up -d
+podman ps   # wait until all containers are "Up" (postgres/kafka "healthy")
+
+# 5) Superset bootstrap: DW connection + 7 datasets + dashboard
+podman-compose --profile bootstrap run --rm superset-bootstrap
+#    (note: if podman-compose "run" recreates a container, run again: podman-compose up -d)
+
+# 6) R1–R7 dashboard charts (from the host)
+SUPERSET_URL=http://localhost:8088 python3 scripts/superset_charts_bootstrap.py
+```
+
+#### Option B: Windows / Docker Desktop (PowerShell)
+
+Step-by-step reproducible guide tested and verified on Windows 11 with PowerShell and Docker Desktop:
+
+##### Step 1: Environment setup and Airflow credentials
 
 ```powershell
-# 1. Crear y activar el entorno virtual local en Windows PowerShell
+# 1. Create and activate local virtual environment in Windows PowerShell
 py -3.12 -m venv venv
 venv\Scripts\Activate.ps1
 
-# 2. Copiar la plantilla de configuración (.env NUNCA se sube a Git)
+# 2. Copy environment template (.env is NEVER committed to Git)
 Copy-Item .env.example .env
 
-# 3. Generar credenciales para Airflow 3 (SimpleAuthManager)
-# NOTA: En PowerShell no existe 'printf' y no se debe usar 'print'.
-# Se usa Out-File con -Encoding ascii para evitar codificación UTF-16 BOM que corrompe el parser JSON:
+# 3. Generate credentials for Airflow 3 (SimpleAuthManager)
+# NOTE: PowerShell does not have 'printf' and 'print' must not be used.
+# Use Out-File with -Encoding ascii to prevent UTF-16 BOM encoding that breaks the JSON parser:
 '{"airflow": "airflow"}' | Out-File -FilePath config/simple_auth_manager_passwords.json -Encoding ascii
 ```
 
-#### Paso 2: Liberar el puerto 5432 en Windows
+##### Step 2: Free port 5432 on Windows
 
 > [!WARNING]
-> **Conflicto de Puerto 5432 (Instancia local de PostgreSQL):** Si tienes un servicio nativo de PostgreSQL corriendo en Windows (por ejemplo, `postgresql-x64-18`), **debes detenerlo** antes de iniciar Docker. Los servicios del pipeline (`streaming-producer`, `streaming-consumer`, etc.) resuelven la base de datos `postgres` hacia `host-gateway`, por lo que si el puerto `5432` del host está ocupado por una instancia local de Windows, chocarán y fallará la autenticación.
+> **Port 5432 Conflict (Native PostgreSQL service):** If you have a native PostgreSQL service running on Windows (e.g., `postgresql-x64-18`), **you must stop it** before starting Docker. Pipeline services (`streaming-producer`, `streaming-consumer`, etc.) resolve the `postgres` host to `host-gateway`, so if port `5432` on the host is occupied by a local Windows PostgreSQL instance, they will collide and authentication will fail.
 >
-> Ejecuta en PowerShell como Administrador si el servicio está activo:
+> Run in PowerShell as Administrator if the service is active:
 > ```powershell
 > Stop-Service postgresql-x64-18 -ErrorAction SilentlyContinue
 > ```
 
-#### Paso 3: Levantar infraestructura e inicializar Airflow 3
+##### Step 3: Start infrastructure and initialize Airflow 3
 
 ```powershell
-# 1. Construir imágenes e iniciar los 11 servicios en segundo plano
+# 1. Build images and start all 11 services in the background
 docker compose up -d --build
 
-# 2. Verificar que los contenedores estén sanos (esperar a que postgres y kafka reporten 'healthy')
+# 2. Verify containers are healthy (wait until postgres and kafka report 'healthy')
 docker ps
 
-# 3. Inicializar metadatos y migraciones de Airflow 3 (garantiza esquemas de ejecución)
+# 3. Initialize Airflow 3 metadata and migrations (ensures execution schemas exist)
 docker exec -it airflow_scheduler_salud airflow db migrate
 
-# 4. Reiniciar servicios de Airflow para sincronizar Scheduler, Webserver y Dag Processor
+# 4. Restart Airflow services to synchronize Scheduler, Webserver, and Dag Processor
 docker restart airflow_webserver_salud airflow_scheduler_salud airflow_dag_processor_salud
 
-# 5. Despausar y disparar el DAG confiable (Test A: Flujo completo exitoso 8/8 tareas)
+# 5. Unpause and trigger the reliable DAG (Test A: Full successful run across all 8 tasks)
 docker exec -it airflow_scheduler_salud airflow dags unpause reliable_health_pipeline
 docker exec -it airflow_scheduler_salud airflow dags trigger reliable_health_pipeline
 ```
 
-#### Paso 4: Inicializar Apache Superset y vincular gráficos al Dashboard
+##### Step 4: Initialize Apache Superset and link charts to the Dashboard
 
 ```powershell
-# 1. Registrar conexión al DW y datasets analíticos R1–R7 en Superset (perfil bootstrap)
+# 1. Register DW connection and R1–R7 analytical datasets in Superset (bootstrap profile)
 docker compose --profile bootstrap run --rm superset-bootstrap
 
-# 2. Generar los 7 gráficos R1–R7 y configurar la cuadrícula del Dashboard
+# 2. Generate all 7 R1–R7 charts and configure the Dashboard layout grid
 docker exec -it superset_salud python /app/scripts/superset_charts_bootstrap.py
 
-# 3. Vincular formalmente las rebanadas (slices) al Dashboard 1 en la base de metadatos de Superset:
+# 3. Formally link chart slices to Dashboard 1 in the Superset metadata database:
 docker exec -it superset_salud python -c "from superset.app import create_app; app = create_app(); app.app_context().push(); from superset import db; from superset.models.dashboard import Dashboard; from superset.models.slice import Slice; d = db.session.query(Dashboard).get(1); d.slices = db.session.query(Slice).all(); db.session.commit(); print('Slices vinculados:', len(d.slices))"
 ```
 
-#### Paso 5: Activar simulación de Streaming (Kafka) para la sustentación
+##### Step 5: Activate Streaming simulation (Kafka) for the presentation
 
 ```powershell
-# Inicia la emisión continua de eventos derivados del DW en modo replay (0.5s de intervalo en bucle)
+# Start continuous emission of DW-derived events in replay mode (0.5s interval loop)
 docker exec -d streaming_producer_salud python -m src.streaming.producer --mode replay --interval 0.5 --loop
 ```
 
 > [!IMPORTANT]
-> **REGLA DE EJECUCIÓN DE SCRIPTS DE KAFKA (PYTHON 3.12 vs 3.11):** No ejecutes los scripts de streaming (`src.streaming.producer`, `src.streaming.consumer`, `scripts.streaming_demo`) directamente en tu consola de PowerShell sobre el `venv` local de Python 3.12. La librería `kafka-python` presenta incompatibilidad en Python 3.12 debido a la remoción del módulo estándar `imp`. Todos los contenedores de Docker ejecutan **Python 3.11**, por lo que **todos los scripts y experimentos de Kafka deben ejecutarse estrictamente vía `docker exec`** dentro de los contenedores (`streaming_producer_salud` o `streaming_consumer_salud`).
+> **EXECUTION RULE FOR KAFKA SCRIPTS (PYTHON 3.12 vs 3.11):** Do not run streaming scripts (`src.streaming.producer`, `src.streaming.consumer`, `scripts.streaming_demo`) directly in your PowerShell terminal using the local Python 3.12 `venv`. The `kafka-python` package is incompatible with Python 3.12 due to the removal of the standard library `imp` module. All Docker containers run **Python 3.11**, so **all Kafka scripts and experiments must be executed strictly via `docker exec`** inside the streaming containers (`streaming_producer_salud` or `streaming_consumer_salud`).
 
-#### Paso 6: Accesos a las Interfaces de Usuario (Web UIs)
+##### Step 6: Web User Interfaces (Web UIs)
 
-| Servicio | URL | Credenciales locales por defecto |
+| Service | URL | Default local credentials |
 |---|---|---|
 | **Apache Airflow 3** | <http://localhost:8080> | `airflow` / `airflow` |
 | **Apache Superset (BI)** | <http://localhost:8088> | `admin` / `admin` |
-| **Streamlit (Tiempo Real)** | <http://localhost:8501> | Acceso directo sin autenticación |
-| **PostgREST API** | <http://localhost:3000> | Acceso anónimo (`etl_user`) |
+| **Streamlit (Real-Time)** | <http://localhost:8501> | Direct public access (no login) |
+| **PostgREST API** | <http://localhost:3000> | Anonymous access (`etl_user`) |
 
-Comando rápido en PowerShell para abrirlos en el navegador:
+Quick PowerShell command to open them in the browser:
 ```powershell
 Start-Process "http://localhost:8080"
 Start-Process "http://localhost:8088"
@@ -623,75 +653,62 @@ Start-Process "http://localhost:8501"
 
 ---
 
-### 10.3 Comandos de Verificación y Experimentos en Vivo
+### 10.3 Verification Commands and Live Experiments
 
 ```powershell
-# --- 1. Inspeccionar corrida exitosa de Airflow (Test A: 8/8 success) ---
+# --- 1. Inspect successful Airflow execution (Test A: 8/8 success) ---
 docker exec -it airflow_scheduler_salud airflow dags list-runs reliable_health_pipeline -o plain
 
-# --- 2. Demostración de Falla Controlada (Test B: Bloqueo en Gate 1 DQ-02) ---
+# --- 2. Controlled Quality Failure Demonstration (Test B: Blocked at Gate 1 DQ-02) ---
 docker exec -it airflow_scheduler_salud airflow dags trigger bad_health_pipeline
-# (En Airflow UI: validate_primary_raw falla en rojo; tareas posteriores quedan en upstream_failed)
+# (In Airflow UI: validate_primary_raw fails in red; downstream tasks transition to upstream_failed)
 
-# --- 3. Experimento de Streaming 1: Inyección de evento inválido (Violación de contrato) ---
+# --- 3. Streaming Experiment 1: Invalid Event Injection (Contract Violation) ---
 docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-invalid
-# (El consumidor rechaza el evento, lo enruta a la DLQ y sigue vivo; invalid_events_total sube en Streamlit)
+# (Consumer rejects event, routes to DLQ, and keeps running; invalid_events_total increments in Streamlit)
 
-# --- 4. Experimento de Streaming 2: Inyección de payload corrupto no-JSON ---
+# --- 4. Streaming Experiment 2: Non-JSON Malformed Payload Injection ---
 docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-json-invalid
 
-# --- 5. Experimento de Streaming 3: Inyección de alerta de umbral (|delta| >= 5%) ---
+# --- 5. Streaming Experiment 3: Threshold Alert Injection (|delta| >= 5%) ---
 docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-alert
 
-# --- 6. Inspección de eventos crudos en el topic de Kafka ---
+# --- 6. Inspect Raw Events Flowing Through Kafka Topic ---
 docker exec -it streaming_producer_salud python -m scripts.streaming_demo --listen 5
 
-# --- 7. Demostración de Interrupción y Resiliencia del Consumidor ---
-docker stop streaming_consumer_salud    # Tras 15s de inactividad, Streamlit muestra banner rojo '⛔ OFFLINE'
-docker start streaming_consumer_salud   # En 1-2s vuelve a '✅ ONLINE' y procesa eventos represados
+# --- 7. Consumer Interruption and Recovery Demonstration ---
+docker stop streaming_consumer_salud    # After 15s without heartbeat, Streamlit displays red '⛔ OFFLINE' banner
+docker start streaming_consumer_salud   # Within 1-2s transitions back to '✅ ONLINE' and processes backlogged events
 
-# --- 8. Pruebas unitarias e integración del repositorio (123 tests) ---
+# --- 8. Run Repository Unit and Integration Test Suite (123 tests) ---
 docker exec -it etl_process pytest -q
 
-# --- 9. Consultar estado del Data Warehouse y auditoría en PostgreSQL ---
+# --- 9. Query Data Warehouse State and Audit Logs in PostgreSQL ---
 docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT run_id, dag_id, status, dq_rules_passed, dq_rules_total, duration_seconds FROM audit.etl_run ORDER BY started_at DESC LIMIT 3;"
 docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT metric_name, metric_value, unit, event_count, invalid_count, updated_at FROM streaming.metric_state;"
 ```
 
-### 10.4 Flujo Linux / Podman (Alternativa)
+### 10.4 Presentation Verification Checklist
 
-Para entornos Linux con Podman rootless y `podman-compose`:
-```bash
-cp .env.example .env
-printf '{"airflow": "airflow"}' > config/simple_auth_manager_passwords.json
-podman-compose up -d
-podman-compose --profile bootstrap run --rm superset-bootstrap
-SUPERSET_URL=http://localhost:8088 python3 scripts/superset_charts_bootstrap.py
-podman exec -it airflow_scheduler_salud airflow dags trigger reliable_health_pipeline
-podman exec -d streaming_producer_salud python -m src.streaming.producer --mode replay --interval 0.5 --loop
-```
+1. **Airflow (`:8080`):** `reliable_health_pipeline` showing green run (8/8 success), gate logs displaying `GX 11/11`, `4/4`, and `10/10 expectations`. Test B (`bad_health_pipeline`) showing deterministic failure in red.
+2. **Audit (`audit.etl_run`):** Records showing `SUCCESS` and `dq_rules_passed = 12/12` for Test A, and `BLOCKED_QUALITY` for Test B.
+3. **Superset (`:8088`):** Dashboard `ods3-salud-colombia` published and rendering all 7 charts (R1–R7) without database errors.
+4. **Streamlit (`:8501`):** Green `✅ Consumer consumer-1 active` banner, metrics continuously refreshing every 3 seconds in replay mode.
+5. **Test suite (123 tests):** `pytest -q` executing with 100% pass rate.
+6. **Captured evidence:** All execution logs and screenshots verified under [`docs/evidence/`](docs/evidence/).
 
-### 10.5 Checklist de Verificación para la Sustentación
+### 10.5 Credential and Secret Management
 
-1. **Airflow (`:8080`):** `reliable_health_pipeline` con corrida verde (8/8 success), logs de las compuertas mostrando `GX 11/11`, `4/4` y `10/10 expectations`. Test B (`bad_health_pipeline`) mostrando fallo determinista en rojo.
-2. **Auditoría (`audit.etl_run`):** Registros con estado `SUCCESS` y `dq_rules_passed = 12/12` para Test A, y `BLOCKED_QUALITY` para Test B.
-3. **Superset (`:8088`):** Dashboard `ods3-salud-colombia` publicado y renderizando los 7 gráficos R1–R7 sin errores de conexión.
-4. **Streamlit (`:8501`):** Banner verde `✅ Consumer consumer-1 active`, métricas refrescándose cada 3 segundos en modo replay.
-5. **Pruebas (123 tests):** `pytest -q` ejecutándose con 100% de aprobación.
-6. **Evidencias respaldadas:** Todos los logs y capturas verificables en [`docs/evidence/`](docs/evidence/).
+All sensitive values are managed strictly through `.env` (**gitignored**); `.env.example` provides default values for **local development only**:
 
-### 10.6 Manejo de Credenciales y Secretos
-
-Todo el material sensible se gestiona estrictamente vía `.env` (**ignorado por git**); el archivo `.env.example` contiene únicamente valores por defecto para **desarrollo local**:
-
-| Parámetro | Variable de Entorno | Valor Local por Defecto |
+| Parameter | Environment Variable | Default Local Value |
 |---|---|---|
 | PostgreSQL DW | `POSTGRES_USER` / `POSTGRES_PASSWORD` | `etl_user` / `change_me_2026` |
-| Airflow Web UI | `AIRFLOW_CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE` | `airflow` / `airflow` (en `config/simple_auth_manager_passwords.json`) |
+| Airflow Web UI | `AIRFLOW_CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE` | `airflow` / `airflow` (in `config/simple_auth_manager_passwords.json`) |
 | Superset Admin | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` | `admin` / `admin` |
-| PostgREST Rol | `POSTGREST_DB_ANON_ROLE` | `etl_user` |
+| PostgREST Role | `POSTGREST_DB_ANON_ROLE` | `etl_user` |
 
-El repositorio no almacena credenciales de producción, API keys privadas ni tokens reales.
+The repository contains no production credentials, private API keys, or real access tokens.
 
 ---
 
@@ -781,7 +798,7 @@ machine dies without SIGTERM, detection happens by staleness > 15 s).
    The dimensional Data Warehouse applies an idempotent *Full Refresh* pattern via `sql/init.sql` (`DROP TABLE IF EXISTS ... CASCADE` followed by `CREATE TABLE`). Crucially, the operational audit schema (`audit.*`) uses `CREATE TABLE IF NOT EXISTS` and is **never dropped**, ensuring complete run history and metric traceability across pipeline re-runs. Because the source healthcare datasets represent static point-in-time snapshots rather than continuous streaming flows, full table replacement ensures strict consistency, avoids orphaned surrogate keys, and eliminates duplicate rows without complex SCD-2 pipelines.
 
 4. **Temporal asymmetry and grain modeling in `dim_time`.**
-   The official source datasets published by government entities have different temporal snapshots: SGSSS affiliates microdata is captured as of April 2022 (corte 2022-Q2), while REPS installed healthcare capacity (beds, rooms) is captured as of November 2022 (corte 2022-Q4). `dim_time` conformed dimension explicitly models both quarters (`2022-Q2` and `2022-Q4`) without fabricating synthetic dates. Infrastructure capacity is modeled as a semi-additive stock (valid at a point in time, non-additive across time), whereas affiliates are modeled as an additive periodic snapshot.
+   The official source datasets published by government entities have different temporal snapshots: SGSSS affiliates microdata is captured as of April 2022 (Q2 2022 snapshot), while REPS installed healthcare capacity (beds, rooms) is captured as of November 2022 (Q4 2022 snapshot). `dim_time` conformed dimension explicitly models both quarters (`2022-Q2` and `2022-Q4`) without fabricating synthetic dates. Infrastructure capacity is modeled as a semi-additive stock (valid at a point in time, non-additive across time), whereas affiliates are modeled as an additive periodic snapshot.
 
 5. **Kafka producer modes: `--mode snapshot` (production) vs. `--mode replay` (simulation).**
    To satisfy the strict specification ("Avoid repeatedly publishing unchanged KPI values without analytical justification"), the producer runs by default in `--mode snapshot` with a 10 s interval. It compares aggregated DW metrics against `streaming.producer_state` and **only publishes when values change**, emitting an extra `threshold_alert` if `|delta| ≥ 5%`. Conversely, `--mode replay` enables controlled event streaming demonstration when the underlying warehouse is static, replaying historical records at low latency (0.5 s) and explicitly stamping each event with `"source": {"mode": "replay", "simulation": true}` for total transparency.
