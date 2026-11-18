@@ -7,6 +7,71 @@ function DC {
     & docker compose -f (Join-Path $projectRoot 'docker-compose.yml') @args
     if ($LASTEXITCODE -ne 0) { throw "Docker Compose fallo (codigo $LASTEXITCODE)." }
 }
+function Get-ComposeHelp([string]$Sub) {
+    # La ayuda viaja por stdout, pero el proveedor externo de podman avisa por
+    # stderr y en Windows PowerShell eso puede lanzar: se silencia y se captura.
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        $lines = @(docker compose -f (Join-Path $projectRoot 'docker-compose.yml') $Sub --help 2>&1)
+        return ($lines | Out-String)
+    } catch { return '' }
+    finally { $ErrorActionPreference = $previous }
+}
+function Test-ComposeFlag([string]$Sub, [string]$Flag) {
+    # podman-compose no implementa `up --wait` ni `ps -a`; docker compose si.
+    return (Get-ComposeHelp $Sub).Contains($Flag)
+}
+function Get-ContainerState([string]$Id) {
+    # Devuelve "nombre|estado|salud|codigo_de_salida" (una sola inspeccion).
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        $lines = @(docker inspect --format '{{.Name}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.ExitCode}}' $Id 2>&1)
+        return (($lines | Out-String).Trim())
+    } catch { return '' }
+    finally { $ErrorActionPreference = $previous }
+}
+function Wait-Services([int]$TimeoutSec = 600) {
+    # Equivalente portable de `up --wait` cuando el proveedor no lo admite:
+    # running y healthy (o sin healthcheck), o one-shot terminado con codigo 0.
+    # Cada 15 s imprime lo que bloquea; un contenedor en fallo 15 s seguidos
+    # aborta enseguida en lugar de agotar los 600 s en silencio.
+    Write-Host "Esperando a que los servicios esten listos (max $TimeoutSec s)..."
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $last = Get-Date
+    $badTicks = 0
+    $report = ''
+    do {
+        $ready = $true
+        $report = ''
+        $nowBad = ''
+        $ids = @((DC ps -q) | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+        if ($ids.Count -eq 0) { $ready = $false; $report = ' sin contenedores todavia' }
+        foreach ($id in $ids) {
+            $state = Get-ContainerState $id
+            $parts = @($state -split '\|')
+            if (!$state -or $parts.Count -lt 4) { $ready = $false; continue }
+            $name = $parts[0].TrimStart('/')
+            $status = $parts[1]
+            $health = $parts[2]
+            $code = $parts[3]
+            if ($status -eq 'running') {
+                if ($health -ne 'none' -and $health -ne 'healthy') { $ready = $false; $report += " $name=$health" }
+            } elseif ($status -eq 'exited') {
+                if ($code -ne '0') { $ready = $false; $report += " $name=fallo($code)"; $nowBad += "$name " }
+            } else { $ready = $false; $report += " $name=$status" }
+        }
+        if ($ready) { Write-Host 'Servicios listos.'; return }
+        if ($nowBad) { $badTicks++ } else { $badTicks = 0 }
+        if ($badTicks -ge 3) {
+            throw "Fallo al iniciar, contenedor(es) en error ->$report Revisa sus logs con: docker logs <nombre>"
+        }
+        if (((Get-Date) - $last).TotalSeconds -ge 15) { Write-Host "Esperando:$report"; $last = Get-Date }
+        Start-Sleep -Seconds 5
+    } while ((Get-Date) -lt $deadline)
+    throw "Tiempo agotado, seguian sin estar listos ->$report"
+}
 function Prepare {
     if (!(Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
     New-Item -ItemType Directory -Force -Path 'config' | Out-Null
@@ -142,7 +207,16 @@ function Show-KafkaLive {
         Start-Sleep -Seconds 5
     }
 }
-function Start-Project { DC up -d --build --wait --wait-timeout 600; Show-Links }
+function Start-Project {
+    if (Test-ComposeFlag 'up' '--wait-timeout') {
+        DC up -d --build --wait --wait-timeout 600
+    } else {
+        # sin --wait (podman-compose): levantar y esperar aqui mismo.
+        DC up -d --build
+        Wait-Services
+    }
+    Show-Links
+}
 function Load-Project {
     $runId = 'launcher_' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfff')
     # DAG discovery can take a short time after a fresh metadata database is created.
@@ -165,15 +239,21 @@ function Load-Project {
     throw "Tiempo de espera agotado para $runId. Consulta Airflow; no se borraran datos."
 }
 function Bootstrap {
-    DC --profile bootstrap run --rm --build superset-bootstrap
+    # --no-deps es obligatorio con podman-compose: su `run` llama a `up` de las
+    # dependencias con --remove-orphans fijo y su hash del compose depende de
+    # --profile, asi que considera obsoletos todos los contenedores, hace `down`
+    # de TODO el proyecto y luego solo recrea las dependencias.
+    DC --profile bootstrap run --rm --build --no-deps superset-bootstrap
     DC exec -T superset /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
     Show-Links
 }
 function Validate {
     DC config --quiet
-    DC ps -a
+    # podman-compose no admite `-a` pero su `ps` ya incluye los detenidos.
+    if (Test-ComposeFlag 'ps' '--all') { DC ps -a } else { DC ps }
     DC exec -T airflow-scheduler python -m pip check
-    DC --profile tools run --rm --build -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
+    # --no-deps: mismo motivo que en Bootstrap; los servicios ya estan en marcha.
+    DC --profile tools run --rm --build --no-deps -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
 }
 function Step([string]$Text) {
     if ((Read-Host "$Text [Enter=continuar / q=cancelar]") -eq 'q') { throw 'Operacion cancelada; los pasos completados se conservan.' }
@@ -211,12 +291,20 @@ function Execute([string]$Choice) {
 try {
     if ($Action -eq 'menu') {
         do {
-            Write-Host "`n1 Iniciar | 2 Detener | 3 Validar | 4 Resetear contenedores (conserva datos)"
-            Write-Host '5 Vaciar volumenes/datos | 6 Recrear paso a paso | 7 Reconstruccion automatica completa'
-            Write-Host '8 Reiniciar servicios | 9 Instalar/cargar dashboards sin borrar | 0 Salir'
-            Write-Host '10 Mostrar todos los enlaces del proyecto'
-            Write-Host '11 Mostrar estado, topicos, lag y recursos de Kafka'
-            Write-Host '12 Monitorear Kafka en tiempo real (Ctrl+C para salir)'
+            Write-Host "`nMENU DEL PROYECTO"
+            Write-Host '  1  Iniciar servicios'
+            Write-Host '  2  Detener servicios'
+            Write-Host '  3  Validar instalacion'
+            Write-Host '  4  Resetear contenedores (conserva datos)'
+            Write-Host '  5  Vaciar volumenes y datos'
+            Write-Host '  6  Recrear paso a paso'
+            Write-Host '  7  Reconstruccion automatica completa'
+            Write-Host '  8  Reiniciar servicios'
+            Write-Host '  9  Instalar/cargar dashboards sin borrar'
+            Write-Host ' 10  Mostrar todos los enlaces del proyecto'
+            Write-Host ' 11  Mostrar estado, topicos, lag y recursos de Kafka'
+            Write-Host ' 12  Monitorear Kafka en tiempo real (Ctrl+C para salir)'
+            Write-Host '  0  Salir'
             $choice = Read-Host 'Opcion'
             if ([string]::IsNullOrWhiteSpace($choice) -or $choice -eq '0') { break }
             try { Execute $choice } catch { Write-Host $_.Exception.Message -ForegroundColor Red }

@@ -1,4 +1,7 @@
-FROM python:3.11-slim
+# Base fully qualified: en Podman un nombre corto ("python:3.11-slim") depende
+# de short-name-mode (en modo enforcing ni siquiera resuelve) y puede caer en
+# otro registro. docker.io/library/... funciona igual en Docker y en Podman.
+FROM docker.io/library/python:3.11-slim
 
 WORKDIR /app
 

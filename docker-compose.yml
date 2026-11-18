@@ -2,6 +2,12 @@
 # Docker / Podman Compose Configuration — Health Colombia ETL (ODS 3)
 # Compatible with Docker Compose and Podman Compose (Rootless mode)
 #
+# Podman (ver x-podman abajo): NO se usa el pod compartido de podman-compose.
+# En un pod todos los contenedores comparten netns y namespace de usuario, asi
+# que los puertos deben declararse en el pod y --userns=keep-id falla con
+# "cannot set user namespace mode when joining pod with infra container".
+# Con in_pod:false cada servicio se crea igual que con docker compose.
+#
 # Services:
 #   1. postgres         -> PostgreSQL 16: DW dimensional salud_colombia
 #                          + metadatos de Airflow en airflow_meta (Port 5432)
@@ -19,6 +25,14 @@
 #   12. streaming-producer -> DW-derived metric updates publisher (§2.6)
 #   13. realtime-dashboard-> Streamlit real-time dashboard (§2.7, Port 8501)
 # ============================================================================
+
+# Ajustes propios de podman-compose (docker compose los ignora: es una clave x-*).
+#   in_pod: false -> un contenedor por servicio con su propia red, en lugar del
+#   pod por proyecto que podman-compose crea por defecto. Mantiene la semantica
+#   de Docker Compose y permite publicar puertos y usar CONTAINER_USERNS_MODE
+#   (mapa a --userns) por contenedor.
+x-podman:
+  in_pod: false
 
 x-airflow-common: &airflow-common
   # Imagen propia: oficial de Airflow + requirements.txt (Great Expectations
@@ -110,6 +124,9 @@ services:
   postgres:
     image: docker.io/library/postgres:16
     container_name: warehouse_salud
+    # Docker Compose lo pasa como --userns-mode; podman-compose lo pasa como
+    # --userns (valores validos aqui: keep-id, host, "" = por defecto).
+    # Dejar vacio salvo que necesites keep-id en Podman rootless.
     userns_mode: "${CONTAINER_USERNS_MODE:-}"
     env_file:
       - .env
@@ -368,12 +385,19 @@ services:
   # 10. Apache Kafka — KRaft single-node event broker (§2.6)
   # INTERNAL listener (kafka:9092) for containers, EXTERNAL (localhost:19092)
   # for tools running on the host. Topic auto-created with 3 partitions.
-  # Nota: se usa 3.8.0 porque la 4.4.0 empaqueta /opt/kafka/config como
-  # root:root y el entrypoint (user appuser) aborta con "not writable".
+  # La imagen empaqueta /opt/kafka/config como root:root 755 pero arranca con
+  # USER appuser (1000), y /etc/kafka/docker/configure exige que ese directorio
+  # sea escribible: por defecto aborta con "/opt/kafka/config/ file not
+  # writable", el broker muere en bucle de reinicios y el flujo streaming
+  # acaba con "Could not connect to Kafka at kafka:9092". Con user: 0:0 el
+  # broker arranca (comprobado); en Podman rootless el root del contenedor es
+  # tu propio usuario, asi que el volumen kafka_data queda con tus permisos.
+  # El CLUSTER_ID debe ser un valor que kafka-storage acepte; el actual ya lo es.
   # --------------------------------------------------------------------------
   kafka:
     image: docker.io/apache/kafka:3.8.0
     container_name: kafka_salud
+    user: "0:0"
     env_file:
       - .env
     environment:

@@ -4,6 +4,13 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$ROOT"
 dc() { docker compose -f "$ROOT/docker-compose.yml" "$@"; }
+# podman-compose no implementa `up --wait` ni `ps -a` (docker compose si).
+# Se consulta la ayuda del subcomando para que el mismo script sirva a los dos.
+dc_supports() {
+  local help
+  help="$(dc "$1" --help 2>&1 || true)"
+  [[ "$help" == *"$2"* ]]
+}
 prepare() {
   command -v docker >/dev/null || { echo 'Instala Docker con Compose v2.' >&2; return 1; }
   [[ -f .env ]] || cp .env.example .env
@@ -36,15 +43,18 @@ erase_data() {
   for target in "$ROOT/.pgdata" "$ROOT/data" "$ROOT/data/batches"; do
     [[ ! -L "$target" ]] || { echo "Se rechaza un enlace: $target" >&2; return 1; }
     if [[ -d "$target" ]]; then
-      resolved="$(cd -- "$target" && pwd -P)"
-      [[ "$resolved" == "$ROOT/"* ]] || return 1
+      # Sin `cd`: .pgdata es 700 y lo creo PostgreSQL con el uid del contenedor,
+      # asi que el usuario del host no puede entrar y el cd abortaba el borrado
+      # con "Permission denied". realpath resuelve enlaces sin leer el dir.
+      resolved="$(realpath -m -- "$target" 2>/dev/null || printf '%s' "$target")"
+      [[ "$resolved" == "$ROOT/"* ]] || { echo "Ruta fuera del proyecto: $target" >&2; return 1; }
     fi
   done
   dc --profile tools --profile bootstrap down --volumes --remove-orphans
   for target in "$ROOT/.pgdata" "$ROOT/data/batches"; do
     if [[ -d "$target" ]]; then
       # A container may own PostgreSQL files as uid 999. Empty only this verified bind.
-      docker run --rm --mount "type=bind,source=$target,target=/data" alpine:3.20 \
+      docker run --rm --mount "type=bind,source=$target,target=/data" docker.io/library/alpine:3.20 \
         sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +'
       rmdir -- "$target"
     fi
@@ -125,7 +135,56 @@ show_kafka_live() {
     sleep 5
   done
 }
-start_project() { dc up -d --build --wait --wait-timeout 600; show_links; }
+# Equivalente portable de `up --wait` para motores sin esa opcion (podman-compose):
+# espera a que cada contenedor del proyecto este running y healthy (o sin
+# healthcheck) o haya terminado bien, ya que airflow-init/superset-init salen con 0.
+# Cada 15 s se imprimen los que bloquean; si un contenedor acaba en fallo
+# (salida != 0) durante 15 s seguidos se aborta enseguida en vez de agotar los
+# 600 s en silencio.
+wait_services() {
+  local deadline=$((SECONDS + 600)) ids id entry name status health code ready
+  local report now_bad bad_ticks=0 last=0
+  echo 'Esperando a que los servicios esten listos (max 600 s)...'
+  while (( SECONDS < deadline )); do
+    ids="$(dc ps -q 2>/dev/null || true)"
+    ready=1; report=""; now_bad=""
+    if [[ -z "$ids" ]]; then ready=0; report=" sin contenedores todavia"; fi
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      entry="$(docker inspect --format '{{.Name}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.ExitCode}}' "$id" 2>/dev/null || true)"
+      [[ -n "$entry" ]] || continue
+      IFS='|' read -r name status health code <<< "$entry"
+      name="${name#/}"
+      case "$status" in
+        running) [[ "$health" == none || "$health" == healthy ]] || { ready=0; report+=" $name=$health"; };;
+        exited)
+          if [[ "$code" != 0 ]]; then ready=0; report+=" $name=fallo($code)"; now_bad+="$name "; fi;;
+        *) ready=0; report+=" $name=$status";;
+      esac
+    done <<< "$ids"
+    if (( ready == 1 )); then echo 'Servicios listos.'; return 0; fi
+    if [[ -n "$now_bad" ]]; then bad_ticks=$((bad_ticks + 1)); else bad_ticks=0; fi
+    if (( bad_ticks >= 3 )); then
+      echo "Fallo al iniciar, contenedor(es) en error ->$report" >&2
+      echo 'Revisa sus logs con: docker logs <nombre>  (o podman logs <nombre>)' >&2
+      return 1
+    fi
+    if (( SECONDS - last >= 15 )); then echo "Esperando:$report"; last=$SECONDS; fi
+    sleep 5
+  done
+  echo "Tiempo agotado, seguian sin estar listos ->$report" >&2
+  return 1
+}
+start_project() {
+  if dc_supports up --wait-timeout; then
+    dc up -d --build --wait --wait-timeout 600
+  else
+    # sin --wait (podman-compose): levantar y esperar con la misma regla.
+    dc up -d --build
+    wait_services
+  fi
+  show_links
+}
 load_project() {
   local run_id="launcher_$(date -u +%Y%m%dT%H%M%S)_$$" ready=0 state query
   for ((i=0; i<60; i++)); do
@@ -143,15 +202,23 @@ load_project() {
   echo "Tiempo agotado: consulta $run_id en Airflow." >&2; return 1
 }
 bootstrap() {
-  dc --profile bootstrap run --rm --build superset-bootstrap
+  # --no-deps es obligatorio con podman-compose: su `run` llama a `up` de las
+  # dependencias con --remove-orphans fijo, y su hash del compose se calcula
+  # sobre los servicios filtrados por --profile, asi que con otro perfil todo
+  # contenedor existente parece obsoleto -> `down` de TODO el proyecto y luego
+  # solo se recrean las dependencias (el resto de servicios queda borrado).
+  # docker compose no hace eso, pero --no-deps existe en los dos motores.
+  dc --profile bootstrap run --rm --build --no-deps superset-bootstrap
   dc exec -T superset /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
   show_links
 }
 validate() {
   dc config --quiet
-  dc ps -a
+  # podman-compose no admite `-a` pero su `ps` ya incluye los detenidos.
+  if dc_supports ps --all; then dc ps -a; else dc ps; fi
   dc exec -T airflow-scheduler python -m pip check
-  dc --profile tools run --rm --build -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
+  # --no-deps: mismo motivo que en bootstrap; los servicios ya estan en marcha.
+  dc --profile tools run --rm --build --no-deps -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
 }
 step() {
   local answer
@@ -192,12 +259,20 @@ if [[ "${1:-menu}" != menu ]]; then
   execute "$1"
 else
   while true; do
-    printf '\n1 Iniciar | 2 Detener | 3 Validar | 4 Resetear contenedores (conserva datos)\n'
-    echo '5 Vaciar volumenes/datos | 6 Recrear paso a paso | 7 Reconstruccion automatica completa'
-    echo '8 Reiniciar servicios | 9 Instalar/cargar dashboards sin borrar | 0 Salir'
-    echo '10 Mostrar todos los enlaces del proyecto'
-    echo '11 Mostrar estado, topicos, lag y recursos de Kafka'
-    echo '12 Monitorear Kafka en tiempo real (Ctrl+C para salir)'
+    printf '\nMENU DEL PROYECTO\n'
+    printf '  1  Iniciar servicios\n'
+    printf '  2  Detener servicios\n'
+    printf '  3  Validar instalacion\n'
+    printf '  4  Resetear contenedores (conserva datos)\n'
+    printf '  5  Vaciar volumenes y datos\n'
+    printf '  6  Recrear paso a paso\n'
+    printf '  7  Reconstruccion automatica completa\n'
+    printf '  8  Reiniciar servicios\n'
+    printf '  9  Instalar/cargar dashboards sin borrar\n'
+    printf ' 10  Mostrar todos los enlaces del proyecto\n'
+    printf ' 11  Mostrar estado, topicos, lag y recursos de Kafka\n'
+    printf ' 12  Monitorear Kafka en tiempo real (Ctrl+C para salir)\n'
+    printf '  0  Salir\n'
     read -r -p 'Opcion: ' choice || break
     [[ "$choice" != 0 ]] || break
     # Run in its own shell: failures stop the sequence and return to the menu.
