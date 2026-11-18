@@ -25,10 +25,9 @@ data/batches/
 logs/
 *.log
 etl.log
-# --- Local documentation/evidence (kept on the workstation, not committed) ---
-docs/
-# ...except the execution evidence required by the Final Delivery
-# Evidence is intentionally local and is no longer unignored.
+# --- Documentation and execution evidence ---
+# The docs/ folder is part of the final deliverable and is intentionally committed.
+!docs/**/*.log
 
 # --- OS / editor ---
 .DS_Store
