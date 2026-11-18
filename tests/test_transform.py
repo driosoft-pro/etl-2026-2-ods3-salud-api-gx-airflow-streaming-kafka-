@@ -14,6 +14,39 @@ from src.transform import (
     build_fact_affiliates, build_fact_facility_capacity
 )
 
+
+@pytest.mark.unit
+def test_department_regions_match_cached_api():
+    """Regional KPIs must use the same classification as our demographic source."""
+    from src.api_extract import extract_api_all
+    from src.config import REGION_MAP, normalize_text
+
+    api = extract_api_all(force_cache=True)
+    region_names = api['regions'].set_index('region_id')['region_name'].to_dict()
+    aliases = {'BOGOTA': 'BOGOTA D.C.', 'SAN ANDRES Y PROVIDENCIA': 'SAN ANDRES'}
+    for row in api['departments'].to_dict('records'):
+        department = aliases.get(row['department_name'], row['department_name'])
+        assert normalize_text(REGION_MAP[department]) == normalize_text(region_names[row['region_id']]), department
+
+
+@pytest.mark.unit
+def test_r3_registers_facility_grain_dataset(monkeypatch):
+    """The R3 dataset must be the facility dimension, not repeated capacity rows."""
+    from scripts import superset_charts_bootstrap as bootstrap
+
+    calls = []
+    def fake_api(method, path, payload, **kwargs):
+        calls.append((method, path, payload))
+        return 201, {'id': 42}
+
+    monkeypatch.setattr(bootstrap, 'api', fake_api)
+    datasets = [{'table_name': 'fact_facility_capacity', 'database': {'id': 9}, 'schema': 'public'}]
+    assert bootstrap.ensure_facility_dataset('token', 'csrf', datasets) == 42
+    assert calls[0][2] == {'database': 9, 'schema': 'public', 'table_name': 'dim_facility'}
+    assert bootstrap.ensure_facility_dataset('token', 'csrf', [{'table_name': 'dim_facility', 'id': 42}]) == 42
+    assert len(calls) == 1
+
+
 @pytest.fixture(scope="module")
 def raw_data():
     return extract_all()

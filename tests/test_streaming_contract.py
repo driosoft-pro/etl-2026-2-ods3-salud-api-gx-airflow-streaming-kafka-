@@ -81,6 +81,12 @@ class TestRequiredFields:
 
 
 class TestEventIdentity:
+    @pytest.mark.parametrize("version", [True, False, 1.0, "1"])
+    def test_schema_version_requires_an_integer_not_a_boolean(self, version):
+        valid, errors = validate_event(_valid_event(schema_version=version))
+        assert not valid
+        assert any("schema_version" in error for error in errors)
+
     def test_non_uuid_event_id_is_rejected(self):
         event = _valid_event(event_id="not-a-uuid")
         valid, errors = validate_event(event)
@@ -101,6 +107,11 @@ class TestEventIdentity:
 
 
 class TestTimestampAndKey:
+    def test_timestamp_must_use_utc(self):
+        valid, errors = validate_event(_valid_event(timestamp="2026-11-17T10:00:00-05:00"))
+        assert not valid
+        assert any("UTC" in error for error in errors)
+
     def test_malformed_timestamp_is_rejected(self):
         event = _valid_event(timestamp="31/12/2026 25:99")
         valid, errors = validate_event(event)
@@ -122,6 +133,63 @@ class TestTimestampAndKey:
 
 
 class TestPayload:
+    @pytest.mark.parametrize("field,limit", [("event_key", 160), ("metric_name", 120)])
+    def test_envelope_strings_fit_the_persistence_schema(self, field, limit):
+        valid, errors = validate_event(_valid_event(**{field: "x" * (limit + 1)}))
+        assert not valid
+        assert any("must not exceed" in error for error in errors)
+
+    def test_unit_fits_the_persistence_schema(self):
+        event = _valid_event()
+        event["payload"]["unit"] = "x" * 41
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any("must not exceed" in error for error in errors)
+
+    def test_nested_non_finite_values_do_not_reach_jsonb_storage(self):
+        event = _valid_event()
+        event["payload"]["dimension"] = {"untrusted_attribute": float("nan")}
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any("JSON-compatible" in error for error in errors)
+
+    @pytest.mark.parametrize("field", ["value", "previous_value", "delta"])
+    @pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -float("inf")])
+    def test_numeric_payload_fields_require_finite_numbers(self, field, value):
+        event = _valid_event()
+        event["payload"][field] = value
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any(field in error for error in errors)
+
+    @pytest.mark.parametrize("value", [123, None, "", "   "])
+    def test_unit_requires_a_non_empty_string(self, value):
+        event = _valid_event()
+        event["payload"]["unit"] = value
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any("unit" in error for error in errors)
+
+    def test_dimension_requires_an_object(self):
+        event = _valid_event()
+        event["payload"]["dimension"] = "BOGOTA"
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any("dimension" in error for error in errors)
+
+    @pytest.mark.parametrize("threshold", [None, "0.05", True, -0.1, float("nan"), float("inf")])
+    def test_alert_threshold_must_be_a_finite_non_negative_number(self, threshold):
+        event = _valid_event(event_type="threshold_alert")
+        event["payload"]["threshold"] = threshold
+        valid, errors = validate_event(event)
+        assert not valid
+        assert any("threshold" in error for error in errors)
+
+    def test_alert_requires_a_threshold(self):
+        valid, errors = validate_event(_valid_event(event_type="threshold_alert"))
+        assert not valid
+        assert any("threshold" in error for error in errors)
+
     def test_missing_payload_value_is_rejected(self):
         event = _valid_event()
         del event["payload"]["value"]
@@ -145,6 +213,23 @@ class TestPayload:
 
 
 class TestSource:
+    def test_demo_source_is_compliant(self):
+        valid, errors = validate_event(_valid_event(source={"mode": "demo", "simulation": True}))
+        assert valid, errors
+
+    @pytest.mark.parametrize("source", [
+        None,
+        {"mode": "unknown", "simulation": False},
+        {"mode": "replay", "simulation": False},
+        {"mode": "snapshot", "simulation": True},
+        {"mode": "snapshot", "simulation": False, "batch_id": True},
+        {"mode": "snapshot", "simulation": False, "batch_id": "7"},
+    ])
+    def test_source_fields_match_the_declared_types_and_simulation_mode(self, source):
+        valid, errors = validate_event(_valid_event(source=source))
+        assert not valid
+        assert any("source" in error for error in errors)
+
     def test_source_without_simulation_flag_is_rejected(self):
         event = _valid_event(source={"mode": "snapshot"})
         valid, errors = validate_event(event)

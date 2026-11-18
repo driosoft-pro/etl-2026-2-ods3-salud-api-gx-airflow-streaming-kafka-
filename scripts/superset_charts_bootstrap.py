@@ -3,7 +3,6 @@
 
 import json
 import os
-import re
 import sys
 import urllib.error
 import urllib.request
@@ -12,6 +11,7 @@ from http.cookiejar import CookieJar
 SUPERSET_URL = os.getenv("SUPERSET_URL", "http://localhost:8088").rstrip("/")
 ADMIN_USER = os.getenv("SUPERSET_ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("SUPERSET_ADMIN_PASSWORD", "admin")
+DASHBOARD_SLUG = "ods3-salud-colombia"
 
 cj = CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
@@ -84,42 +84,88 @@ def echarts_bar(x, metric, limit, fmt=",.0f", groupby=None, stacked=False,
     return "echarts_timeseries_bar", form
 
 
-def ensure_chart(token, csrf, name, ds_id, viz_type, params):
-    status, res = api(
-        "GET",
-        f"/api/v1/chart/?q=(filters:!((col:slice_name,opr:eq,value:{name})))",
-        token=token,
+def list_objects(resource, token):
+    objects = []
+    page = 0
+    while True:
+        status, res = api(
+            "GET", f"/api/v1/{resource}/?q=(page:{page},page_size:100)", token=token
+        )
+        if status != 200:
+            raise RuntimeError(f"Could not list {resource}: {status} {res}")
+        batch = res.get("result", [])
+        objects.extend(batch)
+        if not batch or len(objects) >= res.get("count", len(objects)):
+            return objects
+        page += 1
+
+
+def ensure_facility_dataset(token, csrf, datasets):
+    """R3 uses one row per facility, not the capacity view's repeated rows."""
+    facility = next((d for d in datasets if d["table_name"] == "dim_facility"), None)
+    if facility:
+        return facility["id"]
+    reference = next(d for d in datasets if d["table_name"] == "fact_facility_capacity")
+    payload = {
+        "database": reference["database"]["id"],
+        "schema": reference.get("schema") or "public",
+        "table_name": "dim_facility",
+    }
+    status, res = api("POST", "/api/v1/dataset/", payload, token=token, csrf=csrf)
+    if status not in (200, 201) or "id" not in res:
+        raise RuntimeError(f"Could not register facility dataset: {status} {res}")
+    print(f"  dataset 'dim_facility' registered (id={res['id']})")
+    return res["id"]
+
+
+def ensure_chart(token, csrf, name, ds_id, viz_type, params, dashboard_id):
+    existing = next(
+        (chart for chart in list_objects("chart", token) if chart["slice_name"] == name),
+        None,
     )
-    if status == 200 and res.get("result"):
-        cid = res["result"][0]["id"]
-        print(f"  chart '{name}' exists (id={cid})")
-        return cid
+    chart_params = dict(params, datasource=f"{ds_id}__table", viz_type=viz_type)
+    if existing:
+        chart_params["slice_id"] = existing["id"]
+    dashboards = {dashboard_id}
+    if existing:
+        dashboards.update(d["id"] for d in existing.get("dashboards", []))
     payload = {
         "slice_name": name,
         "datasource_id": ds_id,
         "datasource_type": "table",
         "viz_type": viz_type,
-        "params": json.dumps(params),
+        "params": json.dumps(chart_params),
+        "dashboards": sorted(dashboards),
     }
-    status, res = api("POST", "/api/v1/chart/", payload, token=token, csrf=csrf)
-    if status in (200, 201) and "id" in res:
-        print(f"  chart '{name}' created (id={res['id']})")
-        return res["id"]
-    print(f"  FAILED chart '{name}': {status} {res}")
-    return 0
+    path = f"/api/v1/chart/{existing['id']}" if existing else "/api/v1/chart/"
+    status, res = api("PUT" if existing else "POST", path, payload, token=token, csrf=csrf)
+    if status not in (200, 201):
+        raise RuntimeError(f"Could not save chart '{name}': {status} {res}")
+    chart_id = existing["id"] if existing else res["id"]
+    print(f"  chart '{name}' saved (id={chart_id}, dashboard={dashboard_id})")
+    return chart_id
 
 
 def main():
     print(f"Bootstrapping charts at {SUPERSET_URL}...")
     token, csrf = login()
 
-    # Dataset ids (from previous bootstrap, verified)
-    ds_affiliates = 1   # v_affiliates_summary
-    ds_facility = 2     # v_facility_summary
-    ds_r6 = 3           # v_r6_demographic_coverage
-    ds_r7 = 4           # v_r7_territorial_capacity
+    dashboard = next(
+        (d for d in list_objects("dashboard", token) if d.get("slug") == DASHBOARD_SLUG),
+        None,
+    )
+    if dashboard is None:
+        raise RuntimeError("Project dashboard missing. Run superset_bootstrap.py first.")
+    dashboard_id = dashboard["id"]
+    registered_datasets = list_objects("dataset", token)
+    datasets = {d["table_name"]: d["id"] for d in registered_datasets}
+    ds_affiliates = datasets["v_affiliates_summary"]
+    ds_facility = ensure_facility_dataset(token, csrf, registered_datasets)
+    ds_r6 = datasets["v_r6_demographic_coverage"]
+    ds_r7 = datasets["v_r7_territorial_capacity"]
 
     base_table = {
+        "query_mode": "raw",
         "time_range": "No filter",
         "adhoc_filters": [],
         "row_limit": 10000,
@@ -136,19 +182,19 @@ def main():
     # R1: Afiliados por regimen (barras horizontales eCharts)
     viz, params = echarts_bar("regime", simple_metric("numero_afiliados"), 10)
     params["orientation"] = "horizontal"
-    cid = ensure_chart(token, csrf, "R1 - Afiliados por Regimen", ds_affiliates, viz, params)
+    cid = ensure_chart(token, csrf, "R1 - Afiliados por Regimen", ds_affiliates, viz, params, dashboard_id)
     if cid:
         charts.append(cid)
 
     # R2: Top 10 departamentos (bar)
     viz, params = echarts_bar("departamento", simple_metric("numero_afiliados"), 10)
-    cid = ensure_chart(token, csrf, "R2 - Top 10 Departamentos por Afiliados", ds_affiliates, viz, params)
+    cid = ensure_chart(token, csrf, "R2 - Top 10 Departamentos por Afiliados", ds_affiliates, viz, params, dashboard_id)
     if cid:
         charts.append(cid)
 
     # R3: Establecimientos por naturaleza (bar)
-    viz, params = echarts_bar("nature", simple_metric("capacity_amount", agg="COUNT", label="Establecimientos"), 20)
-    cid = ensure_chart(token, csrf, "R3 - Establecimientos por Naturaleza", ds_facility, viz, params)
+    viz, params = echarts_bar("nature", simple_metric("sk_facility", agg="COUNT_DISTINCT", label="Establecimientos"), 20)
+    cid = ensure_chart(token, csrf, "R3 - Establecimientos por Naturaleza", ds_facility, viz, params, dashboard_id)
     if cid:
         charts.append(cid)
 
@@ -162,7 +208,7 @@ def main():
             "label": "Camas / 1000 hab",
         },
         10, ",.3f")
-    cid = ensure_chart(token, csrf, "R4 - Camas por 1000 Habitantes", ds_r7, viz, params)
+    cid = ensure_chart(token, csrf, "R4 - Camas por 1000 Habitantes", ds_r7, viz, params, dashboard_id)
     if cid:
         charts.append(cid)
 
@@ -170,7 +216,7 @@ def main():
     viz, params = echarts_bar(
         "region", simple_metric("numero_afiliados"), 50,
         groupby=["regime"], stacked=True, show_value=False)
-    cid = ensure_chart(token, csrf, "R5 - Afiliados por Region y Regimen", ds_affiliates, viz, params)
+    cid = ensure_chart(token, csrf, "R5 - Afiliados por Region y Regimen", ds_affiliates, viz, params, dashboard_id)
     if cid:
         charts.append(cid)
 
@@ -181,7 +227,7 @@ def main():
             "total_afiliados_sgsss", "cobertura_afiliacion_pct",
             "brecha_poblacional", "categoria_cobertura",
         ],
-    }))
+    }), dashboard_id)
     if cid:
         charts.append(cid)
 
@@ -193,7 +239,7 @@ def main():
             "camas_por_1000_hab", "capacidad_por_1000_km2",
             "nivel_alerta_hospitalaria",
         ],
-    }))
+    }), dashboard_id)
     if cid:
         charts.append(cid)
 
@@ -213,6 +259,7 @@ def main():
     row_children = []
     for i, chart_id in enumerate(charts):
         chart_key = f"CHART-{chart_id}"
+        row_id = f"ROW-{i // 2 if i < 4 else i - 2}"
         position[chart_key] = {
             "type": "CHART",
             "id": chart_key,
@@ -223,9 +270,8 @@ def main():
                 "height": 45,
                 "sliceNameOverride": None,
             },
-            "parents": ["ROOT_ID", "GRID_ID", f"ROW-{(i // 2)}"],
+            "parents": ["ROOT_ID", "GRID_ID", row_id],
         }
-        row_id = f"ROW-{(i // 2)}"
         if row_id not in row_children:
             row_children.append(row_id)
             position[row_id] = {
@@ -247,14 +293,13 @@ def main():
             position[f"CHART-{chart_id}"]["meta"]["sliceName"] = name
 
     # Update dashboard
-    status, res = api("GET", "/api/v1/dashboard/1", token=token)
-    print(f"Dashboard 1 fetch: {status}")
+    print(f"Updating project dashboard {dashboard_id}...")
 
     payload = {
         "published": True,
         "position_json": json.dumps(position),
     }
-    status, res = api("PUT", "/api/v1/dashboard/1", payload, token=token, csrf=csrf)
+    status, res = api("PUT", f"/api/v1/dashboard/{dashboard_id}", payload, token=token, csrf=csrf)
     print(f"Dashboard update: {status} {str(res)[:200]}")
 
     if status == 200:

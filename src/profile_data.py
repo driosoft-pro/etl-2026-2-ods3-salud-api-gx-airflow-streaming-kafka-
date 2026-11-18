@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Data Profiling Script — Primary Datasets & API Colombia.
-Implements evidence-based profiling required by Section 7 of the Second Delivery brief.
-Generates metrics and outputs to docs/evidence/profiling/.
+"""Reproducible EDA evidence for both CSVs and cached API Colombia snapshots.
+Generates profiles, integration checks and API quality results for the final delivery.
 """
 
 import os
@@ -9,14 +8,13 @@ import sys
 import json
 import logging
 import pandas as pd
-import numpy as np
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.extract import extract_all
 from src.api_extract import extract_api_all
-from src.config import DEPT_NORMALIZE, DISTRICT_TO_DEPT, normalize_text
+from src.config import DEPT_NORMALIZE, DISTRICT_TO_DEPT, REGION_MAP, normalize_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("profiling")
@@ -29,6 +27,8 @@ def profile_dataframe(df: pd.DataFrame, dataset_name: str) -> dict:
         "dataset_name": dataset_name,
         "row_count": len(df),
         "column_count": len(df.columns),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "total_nulls": int(df.isna().sum().sum()),
         "columns": {}
     }
 
@@ -57,6 +57,38 @@ def profile_dataframe(df: pd.DataFrame, dataset_name: str) -> dict:
         summary["columns"][col] = col_profile
 
     return summary
+
+
+def profile_api_quality(departments: pd.DataFrame, regions: pd.DataFrame) -> dict:
+    """Check demographic completeness and geography against the same API snapshot."""
+    numeric_checks = {}
+    for column in ("population", "surface"):
+        values = pd.to_numeric(departments[column], errors="coerce")
+        numeric_checks[column] = {
+            "null_or_non_numeric": int(values.isna().sum()),
+            "non_positive": int((values <= 0).sum()),
+            "min": float(values.min()) if values.notna().any() else None,
+            "max": float(values.max()) if values.notna().any() else None,
+        }
+    aliases = {"BOGOTA": "BOGOTA D.C.", "SAN ANDRES Y PROVIDENCIA": "SAN ANDRES"}
+    region_names = regions.set_index("region_id")["region_name"].to_dict()
+    mismatches = []
+    for row in departments.to_dict("records"):
+        department = aliases.get(row["department_name"], row["department_name"])
+        expected = region_names.get(row["region_id"], "")
+        configured = REGION_MAP.get(department, "")
+        if normalize_text(configured) != normalize_text(expected):
+            mismatches.append({"department": department, "configured": configured,
+                               "api_region": expected})
+    return {
+        "department_id_duplicates": int(departments["api_id"].duplicated().sum()),
+        "department_name_duplicates": int(departments["department_name"].duplicated().sum()),
+        "region_id_duplicates": int(regions["region_id"].duplicated().sum()),
+        "unknown_region_references": int((~departments["region_id"].isin(regions["region_id"])).sum()),
+        "numeric_checks": numeric_checks,
+        "region_mapping_mismatches": mismatches,
+    }
+
 
 def profile_cross_source_integration(df_aff: pd.DataFrame, df_fac: pd.DataFrame, df_api: pd.DataFrame) -> dict:
     log.info("Profiling cross-source integration compatibility...")
@@ -112,14 +144,16 @@ def run_profiling():
     )
     
     full_evidence = {
-        "generated_at": pd.Timestamp.now().isoformat(),
+        "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
+        "source_mode": "versioned_csv_and_api_cache (no live API calls)",
         "datasets": {
             "affiliates": p_aff,
             "facilities": p_fac,
             "api_departments": p_api_dept,
             "api_regions": p_api_reg
         },
-        "integration_profile": p_integration
+        "integration_profile": p_integration,
+        "api_quality": profile_api_quality(raw_api['departments'], raw_api['regions']),
     }
     
     output_path = os.path.join(EVIDENCE_DIR, "data_profiling_evidence.json")
@@ -128,9 +162,11 @@ def run_profiling():
         
     log.info(f"Profiling evidence written to: {output_path}")
     print("\nPROFILING SUMMARY:")
-    print(f"  Affiliates:        {p_aff['row_count']} rows, 0 nulls in mandatory keys")
+    print(f"  Affiliates:        {p_aff['row_count']} rows, {p_aff['total_nulls']} total nulls")
     print(f"  Facilities:        {p_fac['row_count']} rows, {p_fac['columns']['installed_capacity']['unique_count']} capacity values")
-    print(f"  API Departments:   {p_api_dept['row_count']} records, surface and population complete")
+    print(f"  API Departments:   {p_api_dept['row_count']} records")
+    print(f"  API Regions:       {p_api_reg['row_count']} records")
+    print(f"  Region mismatches: {len(full_evidence['api_quality']['region_mapping_mismatches'])}")
     print(f"  Integration Match: {p_integration['harmonized_match_rate_pct']}% matching (harmonized) / {p_integration['raw_match_rate_pct']}% (raw)\n")
     return full_evidence
 

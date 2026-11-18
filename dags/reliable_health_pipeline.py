@@ -35,8 +35,13 @@ from src.quality import (
 )
 from src.load import load_all, export_to_csv, get_connection
 from src import audit
+from src.batch_artifacts import save_frames, load_frames, prepared_frames, unpack_prepared
 
 log = logging.getLogger(__name__)
+
+
+def _run_key():
+    return get_current_context()["run_id"]
 
 
 def _audit_run_id() -> int | None:
@@ -81,6 +86,7 @@ def create_health_pipeline():
         log.info(f"Primary extraction complete: {aff_count} affiliates, {fac_count} facilities")
         return {
             "status": "extracted",
+            "artifact": save_frames(_run_key(), "primary", raw_data),
             "batch_id": f"primary_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
             "affiliates_count": aff_count,
             "facilities_count": fac_count
@@ -93,7 +99,7 @@ def create_health_pipeline():
         """
         log.info("Task [validate_primary_raw]: Executing GX Gate 1 (100% Reliable Mode)...")
         run_id = _audit_run_id()
-        raw_data = extract_all()
+        raw_data = load_frames(extract_meta["artifact"])
         try:
             result = validate_primary_raw(
                 raw_data['affiliates'],
@@ -112,6 +118,7 @@ def create_health_pipeline():
         return {
             "status": "passed",
             "gate": "primary_raw",
+            "artifact": extract_meta["artifact"],
             "passed_rules": result['passed_rules']
         }
 
@@ -132,6 +139,8 @@ def create_health_pipeline():
         log.info(f"API extraction complete: {dept_count} departments, {reg_count} regions (source={source})")
         return {
             "status": "extracted",
+            "artifact": save_frames(_run_key(), "api", {
+                "departments": api_data["departments"], "regions": api_data["regions"]}),
             "batch_id": f"api_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
             "departments_count": dept_count,
             "regions_count": reg_count,
@@ -145,7 +154,7 @@ def create_health_pipeline():
         """
         log.info("Task [validate_api_raw]: Executing GX Gate 2 (API Validation)...")
         run_id = _audit_run_id()
-        api_data = extract_api_all(force_cache=True)
+        api_data = load_frames(api_meta["artifact"])
         try:
             result = validate_api_raw(
                 api_data['departments'],
@@ -164,6 +173,7 @@ def create_health_pipeline():
         return {
             "status": "passed",
             "gate": "api_raw",
+            "artifact": api_meta["artifact"],
             "passed_rules": result['passed_rules']
         }
 
@@ -173,8 +183,8 @@ def create_health_pipeline():
         Executes only when both raw gates satisfy their severity policy.
         """
         log.info("Task [transform_and_integrate]: Both raw branches validated. Starting transformation...")
-        raw_primary = extract_all()
-        raw_api = extract_api_all(force_cache=True)
+        raw_primary = load_frames(primary_gate_res["artifact"])
+        raw_api = load_frames(api_gate_res["artifact"])
         
         df_aff = clean_affiliates(raw_primary['affiliates'])
         df_fac = clean_facilities(raw_primary['facilities'])
@@ -208,6 +218,8 @@ def create_health_pipeline():
         log.info(f"Transformation complete. Facts: {len(fact_aff)} affiliates, {len(fact_cap)} capacity records")
         return {
             "status": "transformed",
+            "artifact": save_frames(_run_key(), "prepared", prepared_frames(dimensions, facts)),
+            "raw_total": int(raw_primary['affiliates']['num_persons'].astype(str).str.replace('.', '', regex=False).astype(int).sum()),
             "dim_geografia_count": len(dim_geo),
             "dim_facility_count": len(dim_fac),
             "fact_affiliates_count": len(fact_aff),
@@ -220,22 +232,8 @@ def create_health_pipeline():
         Evaluates DQ-08 to DQ-12 before loading into PostgreSQL Data Warehouse.
         """
         log.info("Task [validate_prepared]: Executing GX Gate 3 (DQ-08 to DQ-12)...")
-        raw_primary = extract_all()
-        raw_api = extract_api_all(force_cache=True)
-        raw_total = int(raw_primary['affiliates']['num_persons'].astype(str).str.replace('.', '', regex=False).astype(int).sum())
-        
-        df_aff = clean_affiliates(raw_primary['affiliates'])
-        df_fac = clean_facilities(raw_primary['facilities'])
-        dim_time = build_dim_time(df_aff, df_fac)
-        dim_geo = build_dim_geografia(df_aff, df_fac, api_departments=raw_api['departments'], api_regions=raw_api['regions'])
-        dim_reg = build_dim_regime(df_aff)
-        dim_fac = build_dim_facility(df_fac, dim_geo)
-        dim_ct = build_dim_capacity_type(df_fac)
-        fact_aff = build_fact_affiliates(df_aff, dim_time, dim_geo, dim_reg)
-        fact_cap = build_fact_facility_capacity(df_fac, dim_time, dim_fac, dim_ct, dim_geo)
-        
-        dimensions = {'time': dim_time, 'geografia': dim_geo, 'regime': dim_reg, 'facility': dim_fac, 'capacity_type': dim_ct}
-        facts = {'affiliates': fact_aff, 'capacity': fact_cap}
+        dimensions, facts = unpack_prepared(transform_meta["artifact"])
+        raw_total = transform_meta["raw_total"]
         
         run_id = _audit_run_id()
         try:
@@ -252,6 +250,7 @@ def create_health_pipeline():
         return {
             "status": "passed",
             "gate": "prepared_gate",
+            "artifact": transform_meta["artifact"],
             "passed_rules": result['passed_rules']
         }
 
@@ -261,28 +260,14 @@ def create_health_pipeline():
         Implements safe idempotent loading for safe reruns (Test C).
         """
         log.info("Task [load_dimensional_dw]: Loading accepted dimensional data to DW...")
-        raw_primary = extract_all()
-        raw_api = extract_api_all(force_cache=True)
-        
-        df_aff = clean_affiliates(raw_primary['affiliates'])
-        df_fac = clean_facilities(raw_primary['facilities'])
-        dim_time = build_dim_time(df_aff, df_fac)
-        dim_geo = build_dim_geografia(df_aff, df_fac, api_departments=raw_api['departments'], api_regions=raw_api['regions'])
-        dim_reg = build_dim_regime(df_aff)
-        dim_fac = build_dim_facility(df_fac, dim_geo)
-        dim_ct = build_dim_capacity_type(df_fac)
-        fact_aff = build_fact_affiliates(df_aff, dim_time, dim_geo, dim_reg)
-        fact_cap = build_fact_facility_capacity(df_fac, dim_time, dim_fac, dim_ct, dim_geo)
-        
-        dimensions = {'time': dim_time, 'geografia': dim_geo, 'regime': dim_reg, 'facility': dim_fac, 'capacity_type': dim_ct}
-        facts = {'affiliates': fact_aff, 'capacity': fact_cap}
+        dimensions, facts = unpack_prepared(prepared_gate_res["artifact"])
         
         load_all(dimensions, facts, run_id=_audit_run_id())
         rows_loaded = {
-            'dim_time': len(dim_time), 'dim_geografia': len(dim_geo),
-            'dim_regime': len(dim_reg), 'dim_facility': len(dim_fac),
-            'dim_capacity_type': len(dim_ct),
-            'fact_affiliates': len(fact_aff), 'fact_facility_capacity': len(fact_cap),
+            'dim_time': len(dimensions['time']), 'dim_geografia': len(dimensions['geografia']),
+            'dim_regime': len(dimensions['regime']), 'dim_facility': len(dimensions['facility']),
+            'dim_capacity_type': len(dimensions['capacity_type']),
+            'fact_affiliates': len(facts['affiliates']), 'fact_facility_capacity': len(facts['capacity']),
         }
         run_id = _audit_run_id()
         audit.log_step(run_id, 'LOAD', 'load_dimensional_dw', 'SUCCESS',
@@ -351,9 +336,13 @@ def create_health_pipeline():
     dag_id="reliable_health_pipeline",
     default_args=DEFAULT_ARGS,
     description="Test A: Flujo Confiable Exitoso — Salud Colombia ODS 3 (8/8 tareas en éxito)",
-    schedule=None,
+    schedule=(
+        None if os.getenv("ETL_SCHEDULE", "0 6 * * *").lower() == "none"
+        else os.getenv("ETL_SCHEDULE", "0 6 * * *")
+    ),
     start_date=datetime(2026, 1, 1),
     catchup=False,
+    max_active_runs=1,
     tags=["test-a", "production", "reliable", "ods3", "8-of-8-success"]
 )
 def reliable_health_pipeline():

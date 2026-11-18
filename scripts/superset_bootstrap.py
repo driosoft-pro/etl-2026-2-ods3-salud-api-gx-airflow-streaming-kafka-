@@ -8,6 +8,7 @@ import sys
 import time
 import json
 import logging
+import re
 import urllib.request
 import urllib.error
 from http.cookiejar import CookieJar
@@ -33,6 +34,12 @@ DW_URI = os.getenv("SUPERSET_DW_SQLALCHEMY_URI") or (
 
 cookie_jar = CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
+
+
+def safe_error(response) -> str:
+    """Keep database passwords out of bootstrap errors and their tracebacks."""
+    message = str(response).replace(DW_URI, "<redacted database URI>")
+    return re.sub(r"([A-Za-z][A-Za-z0-9+.-]*://[^:/\s]+:)[^@\s]+@", r"\1***@", message)
 
 
 def request_json(method: str, path: str, payload: dict = None, token: str = None, csrf: str = None) -> tuple[int, dict]:
@@ -89,7 +96,7 @@ def login() -> str:
     }
     status, res = request_json("POST", "/api/v1/security/login", payload)
     if status != 200 or "access_token" not in res:
-        raise RuntimeError(f"Login failed: status={status}, response={res}")
+        raise RuntimeError(f"Login failed: status={status}, response={safe_error(res)}")
     token = res["access_token"]
     log.info("Login successful.")
     return token
@@ -99,18 +106,36 @@ def get_csrf_token(token: str) -> str:
     status, res = request_json("GET", "/api/v1/security/csrf_token/", token=token)
     if status == 200 and "result" in res:
         return res["result"]
-    return ""
+    raise RuntimeError(f"Could not obtain CSRF token: {status} {safe_error(res)}")
+
+
+def list_objects(resource: str, token: str) -> list[dict]:
+    """Use valid Rison pagination and filter locally, avoiding mixed JSON/Rison filters."""
+    objects = []
+    page = 0
+    while True:
+        status, res = request_json(
+            "GET", f"/api/v1/{resource}/?q=(page:{page},page_size:100)", token=token
+        )
+        if status != 200:
+            # A failed lookup must never be interpreted as an empty installation.
+            raise RuntimeError(f"Could not list {resource}: {status} {safe_error(res)}")
+        if not isinstance(res.get("result"), list):
+            raise RuntimeError(f"Malformed {resource} listing; refusing to create duplicates")
+        batch = res["result"]
+        objects.extend(batch)
+        if not batch or len(objects) >= res.get("count", len(objects)):
+            return objects
+        page += 1
 
 
 def ensure_database(token: str, csrf: str) -> int:
     db_name = "Salud Colombia DW"
     log.info(f"Checking if database '{db_name}' exists...")
-    status, res = request_json("GET", "/api/v1/database/", token=token)
-    if status == 200 and "result" in res:
-        for db in res["result"]:
-            if db.get("database_name") == db_name:
-                log.info(f"Database '{db_name}' already registered (id={db['id']}).")
-                return db["id"]
+    for db in list_objects("database", token):
+        if db.get("database_name") == db_name:
+            log.info(f"Database '{db_name}' already registered (id={db['id']}).")
+            return db["id"]
 
     log.info(f"Registering database '{db_name}'...")
     payload = {
@@ -126,16 +151,19 @@ def ensure_database(token: str, csrf: str) -> int:
     if status in (200, 201) and "id" in res:
         log.info(f"Database registered successfully (id={res['id']}).")
         return res["id"]
-    raise RuntimeError(f"Failed to register database: {res}")
+    raise RuntimeError(f"Failed to register database: {status} {safe_error(res)}")
 
 
 def ensure_dataset(token: str, db_id: int, table_name: str, schema: str = "public", csrf: str = None) -> int:
     log.info(f"Checking dataset '{table_name}'...")
-    status, res = request_json("GET", f"/api/v1/dataset/?q=(filters:[{{col:table_name,opr:eq,value:{table_name}}}])", token=token)
-    if status == 200 and "result" in res and len(res["result"]) > 0:
-        ds_id = res["result"][0]["id"]
-        log.info(f"Dataset '{table_name}' already exists (id={ds_id}).")
-        return ds_id
+    for dataset in list_objects("dataset", token):
+        database = dataset.get("database", {})
+        dataset_db_id = database.get("id") if isinstance(database, dict) else database
+        if (dataset.get("table_name") == table_name
+                and dataset.get("schema") == schema and dataset_db_id == db_id):
+            ds_id = dataset["id"]
+            log.info(f"Dataset '{table_name}' already exists (id={ds_id}).")
+            return ds_id
 
     log.info(f"Creating dataset '{table_name}'...")
     payload = {
@@ -147,17 +175,16 @@ def ensure_dataset(token: str, db_id: int, table_name: str, schema: str = "publi
     if status in (200, 201) and "id" in res:
         log.info(f"Dataset '{table_name}' created (id={res['id']}).")
         return res["id"]
-    log.warning(f"Could not create dataset '{table_name}': {res}")
-    return 0
+    raise RuntimeError(f"Could not create dataset '{table_name}': {status} {safe_error(res)}")
 
 
 def ensure_dashboard(token: str, title: str, slug: str, csrf: str = None) -> int:
     log.info(f"Checking dashboard '{title}'...")
-    status, res = request_json("GET", f"/api/v1/dashboard/?q=(filters:[{{col:slug,opr:eq,value:{slug}}}])", token=token)
-    if status == 200 and "result" in res and len(res["result"]) > 0:
-        dash_id = res["result"][0]["id"]
-        log.info(f"Dashboard '{title}' already exists (id={dash_id}).")
-        return dash_id
+    for dashboard in list_objects("dashboard", token):
+        if dashboard.get("slug") == slug:
+            dash_id = dashboard["id"]
+            log.info(f"Dashboard '{title}' already exists (id={dash_id}).")
+            return dash_id
 
     payload = {
         "dashboard_title": title,
@@ -168,8 +195,7 @@ def ensure_dashboard(token: str, title: str, slug: str, csrf: str = None) -> int
     if status in (200, 201) and "id" in res:
         log.info(f"Dashboard '{title}' created (id={res['id']}).")
         return res["id"]
-    log.warning(f"Could not create dashboard '{title}': {res}")
-    return 0
+    raise RuntimeError(f"Could not create dashboard '{title}': {status} {safe_error(res)}")
 
 
 def main():

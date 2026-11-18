@@ -1,28 +1,32 @@
-# ============================================================================
-# Health Colombia ETL (ODS 3) — Python dependencies
-# Used by: Dockerfile (etl / streaming), Dockerfile.airflow (Airflow) and
-#          flake.nix shellHook (entorno local)
-# ============================================================================
+# Salud Colombia ODS 3 — dependencias consolidadas
+# Entorno general: python -m pip install -r requirements.txt
+# Airflow instala las secciones comunes con sus constraints oficiales.
 
-# --- Batch ETL core ---
+# --- Extracción, transformación y PostgreSQL ---
 pandas>=2.2,<3.0
 numpy>=1.26,<3.0
 psycopg2-binary>=2.9.9
-requests>=2.31
+requests>=2.32,<3
+chardet==5.2.0
 
-# --- Data quality (Great Expectations) ---
-great-expectations>=1.3,<2.0
+# --- Calidad de datos ---
+great-expectations>=1.25,<2.0
 
-# --- Streaming (Kafka producer / consumer) ---
-# Nota: se fija <3 porque kafka-python 3.x renombra/elimina
-# kafka.errors.NoBrokersAvailable (API usada por productor/consumidor).
+# --- Streaming ---
 kafka-python>=2.2.2,<3.0
 
-# --- Real-time dashboard ---
-# streamlit pide protobuf>=5.26.1,<8; se acota a <7 para no romper los
-# providers de Google / opentelemetry de la imagen de Airflow (requieren <7).
-streamlit>=1.40
+# --- Pruebas ---
+pytest>=8.0
+
+# BEGIN GENERAL_ONLY
+# --- Dashboard (imagen general; excluido de Airflow por protobuf) ---
+streamlit>=1.57,<2
 protobuf>=5.26.1,<7
 
-# --- Tests ---
-pytest>=8.0
+# --- Análisis exploratorio y notebooks ---
+matplotlib>=3.8,<4
+nbformat>=5.9,<6
+nbclient>=0.10,<1
+ipykernel>=6.29,<8
+jupyterlab>=4,<5
+# END GENERAL_ONLY

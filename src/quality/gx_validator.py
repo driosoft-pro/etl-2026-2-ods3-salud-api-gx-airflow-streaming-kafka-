@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 import pandas as pd
+from ..numeric import parse_capacity
 
 from .rules import RULES, CriticalQualityError
 from .gx_backend import (
@@ -100,7 +101,7 @@ def validate_primary_raw(df_affiliates: pd.DataFrame, df_facilities: pd.DataFram
     r3 = RULES["DQ-03"]
     vals = pd.to_numeric(df_affiliates['num_persons'].astype(str).str.replace('.', '', regex=False), errors='coerce')
     negative_count = int((vals < 0).sum())
-    null_count = int(vals.isna().sum())
+    null_count = int((vals.isna() | vals.isin([float('inf'), float('-inf')])).sum())
     success_dq3 = (negative_count == 0) and (null_count == 0)
     results.append({
         "rule_id": "DQ-03",
@@ -133,20 +134,21 @@ def validate_primary_raw(df_affiliates: pd.DataFrame, df_facilities: pd.DataFram
 
     # Check DQ-05: installed_capacity non-negative
     r5 = RULES["DQ-05"]
-    cap_vals = pd.to_numeric(df_facilities['installed_capacity'], errors='coerce').fillna(0)
+    cap_vals = parse_capacity(df_facilities['installed_capacity'])
     cap_neg = int((cap_vals < 0).sum())
-    success_dq5 = cap_neg == 0
+    cap_invalid = int((cap_vals.isna() | cap_vals.isin([float('inf'), float('-inf')])).sum())
+    success_dq5 = cap_neg == 0 and cap_invalid == 0
     results.append({
         "rule_id": "DQ-05",
         "description": r5["rule"],
         "severity": r5["severity"],
         "success": success_dq5,
-        "details": {"negative_capacity_count": cap_neg}
+        "details": {"negative_capacity_count": cap_neg, "invalid_numeric_count": cap_invalid}
     })
     if not success_dq5 and not has_critical_failure:
         has_critical_failure = True
         failing_rule = "DQ-05"
-        failing_msg = f"Installed capacity has negative values: {cap_neg}"
+        failing_msg = f"Installed capacity invalid: negatives={cap_neg}, non-numeric/non-finite={cap_invalid}"
 
     # ------------------------------------------------------------------
     # Great Expectations (suites GX reales) — DQ-01 .. DQ-05.
@@ -156,9 +158,7 @@ def validate_primary_raw(df_affiliates: pd.DataFrame, df_facilities: pd.DataFram
     df_aff_gx = with_numeric(
         df_affiliates, "num_persons", "num_persons_num", strip_thousands=True
     )
-    df_fac_gx = with_numeric(
-        df_facilities, "installed_capacity", "installed_capacity_num", fillna=0
-    )
+    df_fac_gx = df_facilities.assign(installed_capacity_num=cap_vals)
     gx_reports = [
         # Esquema sobre el crudo SIN columnas derivadas (column_set es exacto).
         run_gx_suite(
@@ -192,7 +192,7 @@ def validate_primary_raw(df_affiliates: pd.DataFrame, df_facilities: pd.DataFram
                 for col in req_fac_cols
             ] + [
                 ("DQ-05", "ExpectColumnValuesToNotBeNull",
-                 {"column": "installed_capacity"}),
+                 {"column": "installed_capacity_num"}),
                 ("DQ-05", "ExpectColumnValuesToBeBetween",
                  {"column": "installed_capacity_num", "min_value": 0}),
             ],
@@ -266,7 +266,7 @@ def validate_api_raw(df_departments: pd.DataFrame, df_regions: pd.DataFrame,
         failing_rule = "DQ-06"
         failing_msg = "API departments missing name or ID"
 
-    # Check DQ-07: Population and surface must be positive
+    # Check DQ-07: demographics must be parseable, finite and strictly positive.
     r7 = RULES["DQ-07"]
     if simulate_failure in ("DQ-07", "critical_api"):
         pop_valid = False
@@ -276,8 +276,10 @@ def validate_api_raw(df_departments: pd.DataFrame, df_regions: pd.DataFrame,
     else:
         pop_series = pd.to_numeric(df_departments['population'], errors='coerce')
         surf_series = pd.to_numeric(df_departments['surface'], errors='coerce')
-        pop_neg = int((pop_series <= 0).sum())
-        surf_neg = int((surf_series <= 0).sum())
+        pop_invalid = pop_series.isna() | (pop_series <= 0) | pop_series.isin([float('inf'), -float('inf')])
+        surf_invalid = surf_series.isna() | (surf_series <= 0) | surf_series.isin([float('inf'), -float('inf')])
+        pop_neg = int(pop_invalid.sum())
+        surf_neg = int(surf_invalid.sum())
         pop_valid = pop_neg == 0
         surf_valid = surf_neg == 0
 
@@ -292,7 +294,7 @@ def validate_api_raw(df_departments: pd.DataFrame, df_regions: pd.DataFrame,
     if not success_dq7 and not has_critical_failure:
         has_critical_failure = True
         failing_rule = "DQ-07"
-        failing_msg = f"API demographics invalid: non-positive population ({pop_neg}) or surface ({surf_neg})"
+        failing_msg = f"API demographics invalid: missing/non-numeric/non-finite/non-positive population ({pop_neg}) or surface ({surf_neg})"
 
     # ------------------------------------------------------------------
     # Great Expectations (suites GX reales) — DQ-06 .. DQ-07
@@ -307,6 +309,10 @@ def validate_api_raw(df_departments: pd.DataFrame, df_regions: pd.DataFrame,
                 ("DQ-06", "ExpectColumnValuesToNotBeNull",
                  {"column": "department_name"}),
                 ("DQ-06", "ExpectColumnValuesToNotBeNull", {"column": "api_id"}),
+                ("DQ-07", "ExpectColumnValuesToNotBeNull",
+                 {"column": "population_num"}),
+                ("DQ-07", "ExpectColumnValuesToNotBeNull",
+                 {"column": "surface_num"}),
                 ("DQ-07", "ExpectColumnValuesToBeBetween",
                  {"column": "population_num", "min_value": 0, "strict_min": True}),
                 ("DQ-07", "ExpectColumnValuesToBeBetween",

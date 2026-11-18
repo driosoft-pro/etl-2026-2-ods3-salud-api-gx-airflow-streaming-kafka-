@@ -19,13 +19,16 @@ venv/
 # --- PostgreSQL data volume (bind mount) ---
 .pgdata/
 .kafka-data/
+data/batches/
 
 # --- Logs ---
 logs/
 *.log
 etl.log
+# --- Local documentation/evidence (kept on the workstation, not committed) ---
+docs/
 # ...except the execution evidence required by the Final Delivery
-!docs/evidence/**/*.log
+# Evidence is intentionally local and is no longer unignored.
 
 # --- OS / editor ---
 .DS_Store

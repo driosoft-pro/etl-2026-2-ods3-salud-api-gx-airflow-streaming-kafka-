@@ -2,10 +2,16 @@
 # Docker / Podman Compose Configuration — Health Colombia ETL (ODS 3)
 # Compatible with Docker Compose and Podman Compose (Rootless mode)
 #
+# Podman (ver x-podman abajo): NO se usa el pod compartido de podman-compose.
+# En un pod todos los contenedores comparten netns y namespace de usuario, asi
+# que los puertos deben declararse en el pod y --userns=keep-id falla con
+# "cannot set user namespace mode when joining pod with infra container".
+# Con in_pod:false cada servicio se crea igual que con docker compose.
+#
 # Services:
 #   1. postgres         -> PostgreSQL 16: DW dimensional salud_colombia
 #                          + metadatos de Airflow en airflow_meta (Port 5432)
-#   2. postgrest        -> PostgREST API exposing DW to Power BI & Web clients (Port 3000)
+#   2. postgrest        -> PostgREST API exposing DW to Power BI & Web clients (Port 3220)
 #   3. superset-init    -> One-off initialization for Apache Superset
 #   4. superset         -> Apache Superset BI platform for R1–R7 dashboards (Port 8088)
 #   5. superset-bootstrap -> Automated dataset & dashboard registration script
@@ -20,9 +26,17 @@
 #   13. realtime-dashboard-> Streamlit real-time dashboard (§2.7, Port 8501)
 # ============================================================================
 
+# Ajustes propios de podman-compose (docker compose los ignora: es una clave x-*).
+#   in_pod: false -> un contenedor por servicio con su propia red, en lugar del
+#   pod por proyecto que podman-compose crea por defecto. Mantiene la semantica
+#   de Docker Compose y permite publicar puertos y usar CONTAINER_USERNS_MODE
+#   (mapa a --userns) por contenedor.
+x-podman:
+  in_pod: false
+
 x-airflow-common: &airflow-common
   # Imagen propia: oficial de Airflow + requirements.txt (Great Expectations
-  # y demas deps de src/). Sin esto los gates GX degradarian a fallback nativo.
+  # y demas deps de src/). Los gates exigen GX disponible.
   build:
     context: .
     dockerfile: Dockerfile.airflow
@@ -59,6 +73,7 @@ x-airflow-common: &airflow-common
     DB_PASSWORD: ${POSTGRES_PASSWORD}
     DATA_RAW_DIR: /opt/airflow/data/raw
     GX_EVIDENCE_DIR: /opt/airflow/docs/evidence/gx
+    ETL_SCHEDULE: "${ETL_SCHEDULE:-0 6 * * *}"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./src:/opt/airflow/src
@@ -69,9 +84,6 @@ x-airflow-common: &airflow-common
     - ./gx:/opt/airflow/gx
     - ./logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
-  extra_hosts:
-    - "postgres:host-gateway"
-    - "airflow-webserver:host-gateway"
   user: "${AIRFLOW_UID:-0}:0"
 
 x-streaming-common: &streaming-common
@@ -99,11 +111,11 @@ x-streaming-common: &streaming-common
     - ./scripts:/app/scripts
     - ./logs:/app/logs
     - ./docs:/app/docs
-  extra_hosts:
-    - "postgres:host-gateway"
   depends_on:
-    - postgres
-    - kafka
+    postgres:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
 
 services:
   # --------------------------------------------------------------------------
@@ -112,7 +124,10 @@ services:
   postgres:
     image: docker.io/library/postgres:16
     container_name: warehouse_salud
-    userns_mode: "keep-id"
+    # Docker Compose lo pasa como --userns-mode; podman-compose lo pasa como
+    # --userns (valores validos aqui: keep-id, host, "" = por defecto).
+    # Dejar vacio salvo que necesites keep-id en Podman rootless.
+    userns_mode: "${CONTAINER_USERNS_MODE:-}"
     env_file:
       - .env
     environment:
@@ -133,20 +148,20 @@ services:
       - ./sql/initdb/00_create_databases.sql:/docker-entrypoint-initdb.d/00_create_databases.sql:ro
       - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: always
 
   # --------------------------------------------------------------------------
-  # 2. PostgREST — REST API layer for Power BI and external clients
+  # 2. PostgREST — REST API layer for Power BI and external clients (host port 3220)
   # Exposes PostgreSQL DW tables and analytical views over RESTful HTTP JSON
   # --------------------------------------------------------------------------
   postgrest:
     image: docker.io/postgrest/postgrest:latest
     container_name: postgrest_salud
-    userns_mode: "keep-id"
+    userns_mode: "${CONTAINER_USERNS_MODE:-}"
     env_file:
       - .env
     environment:
@@ -154,13 +169,12 @@ services:
       PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMA:-public}
       PGRST_DB_ANON_ROLE: ${PGRST_DB_ANON_ROLE:-etl_user}
       PGRST_SERVER_PORT: 3000
-      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:${POSTGREST_PORT:-3220}
     ports:
-      - "${POSTGREST_PORT:-3000}:3000"
-    extra_hosts:
-      - "postgres:host-gateway"
+      - "${POSTGREST_PORT:-3220}:3000"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: always
 
   # --------------------------------------------------------------------------
@@ -181,9 +195,6 @@ services:
     volumes:
       - ./config/superset_config.py:/app/pythonpath/superset_config.py:ro
       - superset_home:/app/superset_home
-    extra_hosts:
-      - "postgres:host-gateway"
-      - "superset:host-gateway"
     entrypoint: /bin/bash
     command:
       - -c
@@ -202,7 +213,8 @@ services:
         superset init
         echo "[superset-init] Done!"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: "no"
 
   # --------------------------------------------------------------------------
@@ -226,12 +238,11 @@ services:
       - ./config/superset_config.py:/app/pythonpath/superset_config.py:ro
       - ./scripts:/app/scripts:ro
       - superset_home:/app/superset_home
-    extra_hosts:
-      - "postgres:host-gateway"
-      - "superset:host-gateway"
     depends_on:
-      - postgres
-      - superset-init
+      postgres:
+        condition: service_healthy
+      superset-init:
+        condition: service_completed_successfully
     restart: always
 
   # --------------------------------------------------------------------------
@@ -253,15 +264,13 @@ services:
       SUPERSET_DW_SQLALCHEMY_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - ./scripts:/app/scripts:ro
-    extra_hosts:
-      - "postgres:host-gateway"
-      - "superset:host-gateway"
     entrypoint: /bin/bash
     command:
       - -c
       - python /app/scripts/superset_bootstrap.py
     depends_on:
-      - superset
+      superset:
+        condition: service_healthy
 
   # --------------------------------------------------------------------------
   # 6. Apache Airflow 3.1.8 — Initialization
@@ -273,12 +282,14 @@ services:
     command:
       - -c
       - |
+        set -euo pipefail
         echo "Initializing Airflow metadata and directories..."
         mkdir -p /opt/airflow/{logs,dags,plugins,config,gx}
-        airflow db migrate || airflow db init
+        airflow db migrate
         echo "Airflow initialization finished."
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: "no"
 
   # --------------------------------------------------------------------------
@@ -291,8 +302,16 @@ services:
     ports:
       - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
     depends_on:
-      - postgres
-      - airflow-init
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v2/monitor/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
     restart: always
 
   # --------------------------------------------------------------------------
@@ -303,8 +322,12 @@ services:
     container_name: airflow_scheduler_salud
     command: scheduler
     depends_on:
-      - postgres
-      - airflow-init
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
     restart: always
 
   # --------------------------------------------------------------------------
@@ -317,8 +340,12 @@ services:
     container_name: airflow_dag_processor_salud
     command: dag-processor
     depends_on:
-      - postgres
-      - airflow-init
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
     restart: always
 
   # --------------------------------------------------------------------------
@@ -350,21 +377,27 @@ services:
       - ./gx:/app/gx
       - ./scripts:/app/scripts
       - ./tests:/app/tests
-    extra_hosts:
-      - "postgres:host-gateway"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   # --------------------------------------------------------------------------
   # 10. Apache Kafka — KRaft single-node event broker (§2.6)
   # INTERNAL listener (kafka:9092) for containers, EXTERNAL (localhost:19092)
   # for tools running on the host. Topic auto-created with 3 partitions.
-  # Nota: se usa 3.8.0 porque la 4.4.0 empaqueta /opt/kafka/config como
-  # root:root y el entrypoint (user appuser) aborta con "not writable".
+  # La imagen empaqueta /opt/kafka/config como root:root 755 pero arranca con
+  # USER appuser (1000), y /etc/kafka/docker/configure exige que ese directorio
+  # sea escribible: por defecto aborta con "/opt/kafka/config/ file not
+  # writable", el broker muere en bucle de reinicios y el flujo streaming
+  # acaba con "Could not connect to Kafka at kafka:9092". Con user: 0:0 el
+  # broker arranca (comprobado); en Podman rootless el root del contenedor es
+  # tu propio usuario, asi que el volumen kafka_data queda con tus permisos.
+  # El CLUSTER_ID debe ser un valor que kafka-storage acepte; el actual ya lo es.
   # --------------------------------------------------------------------------
   kafka:
     image: docker.io/apache/kafka:3.8.0
     container_name: kafka_salud
+    user: "0:0"
     env_file:
       - .env
     environment:
@@ -384,7 +417,10 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     ports:
       - "${KAFKA_EXTERNAL_PORT:-19092}:19092"
     healthcheck:
@@ -436,3 +472,4 @@ services:
 volumes:
   pgdata:
   superset_home:
+  kafka_data:

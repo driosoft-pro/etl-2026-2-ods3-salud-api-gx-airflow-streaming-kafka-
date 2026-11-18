@@ -1,0 +1,26 @@
+# Contexto de build para `docker build` y `podman build`.
+# Las imagenes solo copian requirements.txt, src/ y sql/ (ver Dockerfile*),
+# asi que todo lo pesado o sensible se queda fuera del contexto: sin esto cada
+# build arrastra .venv (~1 GB), .git, logs y data, y en Podman rootless se
+# vuelve a leer/serializar en cada build.
+#
+# No ignores src/, sql/ ni requirements.txt: los usan los COPY de los Dockerfile.
+# Los bind mounts de docker-compose.yml (data, logs, docs, gx, config, tests...)
+# NO se ven afectados: .dockerignore solo filtra el contexto de build.
+
+.venv/
+venv/
+.git/
+.pgdata/
+data/
+logs/
+docs/
+notebooks/
+visualizations/
+diagrams/
+.pytest_cache/
+.vscode/
+.env
+
+**/__pycache__/
+*.py[cod]
