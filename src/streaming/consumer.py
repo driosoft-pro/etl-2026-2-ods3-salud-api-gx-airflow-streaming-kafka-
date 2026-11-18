@@ -70,7 +70,7 @@ SQL_AFFILIATES_LATEST = """
     SELECT COALESCE(SUM(value), 0) FROM (
         SELECT DISTINCT ON (event_key) value
         FROM streaming.event_log
-        WHERE metric_name = 'affiliates_by_department'
+        WHERE metric_name = 'affiliates_by_department' AND event_type = 'metric_update'
         ORDER BY event_key, received_at DESC
     ) latest
 """
@@ -79,20 +79,29 @@ SQL_CAPACITY_LATEST = """
     SELECT COALESCE(SUM(value), 0) FROM (
         SELECT DISTINCT ON (event_key) value
         FROM streaming.event_log
-        WHERE metric_name = 'capacity_by_department'
+        WHERE metric_name = 'capacity_by_department' AND event_type = 'metric_update'
         ORDER BY event_key, received_at DESC
     ) latest
 """
 
 SQL_AFFILIATES_NET_DELTA = """
-    SELECT COALESCE(SUM(delta), 0)
-    FROM streaming.event_log
-    WHERE metric_name = 'affiliates_by_department' AND delta IS NOT NULL
+    WITH observations AS (
+        SELECT value,
+               FIRST_VALUE(COALESCE(previous_value, value)) OVER (
+                   PARTITION BY event_key ORDER BY received_at, event_id
+               ) AS baseline,
+               ROW_NUMBER() OVER (
+                   PARTITION BY event_key ORDER BY received_at DESC, event_id DESC
+               ) AS newest
+        FROM streaming.event_log
+        WHERE metric_name = 'affiliates_by_department' AND event_type = 'metric_update'
+    )
+    SELECT COALESCE(SUM(value - baseline), 0) FROM observations WHERE newest = 1
 """
 
 SQL_EVENTS_PER_MINUTE = """
     SELECT COUNT(*) FROM streaming.event_log
-    WHERE received_at > now() - interval '1 minute'
+    WHERE received_at > clock_timestamp() - interval '1 minute'
 """
 
 
@@ -185,10 +194,10 @@ class StreamingConsumer:
     # -- processing --------------------------------------------------------
     def _handle_invalid(self, raw: str, errors: List[str], message_key: Optional[str]) -> None:
         """Dead-letter an invalid event without stopping the consumer."""
-        self.invalid += 1
         store.record_invalid_event(self.conn, raw, errors, message_key)
         store.bump_metric(self.conn, "invalid_events_total", increment_value=1)
         self.conn.commit()
+        self.invalid += 1
         log.warning("INVALID EVENT rejected (%d errors): %s | errors=%s",
                     len(errors), raw[:300], errors)
 
@@ -229,23 +238,23 @@ class StreamingConsumer:
                               unit="slots", event_id=event["event_id"],
                               event_at=event["timestamp"], increment_count=0)
 
-        # Throughput metric (any event)
+        self._refresh_event_rate()
+
+    def _refresh_event_rate(self) -> None:
+        """A rolling window must also expire while the topic is idle."""
         with self.conn.cursor() as cur:
             cur.execute(SQL_EVENTS_PER_MINUTE)
             per_minute = int(cur.fetchone()[0])
         store.bump_metric(self.conn, "events_per_minute", value=per_minute,
-                          unit="events/m", event_id=event["event_id"],
-                          event_at=event["timestamp"], increment_count=0)
+                          unit="events/m", increment_count=0)
 
     def _handle_valid(self, event: Dict[str, Any]) -> None:
         """Persist a valid event and update the streaming metrics."""
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM streaming.event_log WHERE event_id = %s",
-                        (event["event_id"],))
-            already_seen = cur.fetchone() is not None
-
         inserted = store.record_event(self.conn, event)
-        self.processed += 1
+        if not inserted:
+            self.conn.commit()
+            log.debug("duplicate event ignored: %s", event["event_id"])
+            return
 
         store.bump_metric(self.conn, "events_processed_total",
                           increment_value=1, unit="events",
@@ -258,14 +267,15 @@ class StreamingConsumer:
                         event["payload"].get("delta"), event["payload"].get("unit"))
 
         self._refresh_rollups(event)
-        store.heartbeat(self.conn, self.consumer_id, self.processed, self.invalid)
+        store.heartbeat(self.conn, self.consumer_id, self.processed + 1, self.invalid)
         self.conn.commit()
+        self.processed += 1
 
         if inserted or self.verbose:
             log.info("consumed %s key=%s metric=%s value=%s%s",
                      event["event_type"], event["event_key"], event["metric_name"],
                      event["payload"].get("value"),
-                     " [DUPLICATE ignored]" if not inserted and already_seen else "")
+                     "")
 
     def _process_record(self, record) -> None:
         raw = record.value.decode("utf-8", errors="replace") if isinstance(record.value, bytes) \
@@ -279,6 +289,10 @@ class StreamingConsumer:
         valid, errors = validate_event(event)
         if not valid:
             self._handle_invalid(raw, errors, record.key)
+            return
+
+        if record.key != event["event_key"]:
+            self._handle_invalid(raw, ["Kafka key must match event_key"], record.key)
             return
 
         self._handle_valid(event)
@@ -299,14 +313,18 @@ class StreamingConsumer:
                     for record in messages:
                         try:
                             self._process_record(record)
-                        except Exception as e:  # keep the loop alive
+                        except Exception as e:
                             log.exception("unexpected error processing a record: %s", e)
                             self.conn.rollback()
+                            # Do not confirm this batch's offsets. Docker restarts
+                            # the consumer; persisted valid IDs are deduplicated.
+                            raise
 
                 # Heartbeat even when idle so the dashboard can tell
                 # "alive but no events" from "consumer stopped".
                 now = time.time()
                 if now - last_beat >= 2:
+                    self._refresh_event_rate()
                     store.heartbeat(self.conn, self.consumer_id,
                                     self.processed, self.invalid, status="running")
                     self.conn.commit()

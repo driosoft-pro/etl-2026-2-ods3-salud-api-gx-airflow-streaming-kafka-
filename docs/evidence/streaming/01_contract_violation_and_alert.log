@@ -1,12 +1,141 @@
-=== Experimento: evento inválido (violación de contrato) + payload no-JSON + alerta ===
-Fecha UTC: 2026-11-09T01:46:25Z
-
---- Consumidor: rechazos + enrutado a DLQ + alerta procesada ---
-2026-11-09 01:40:33,406 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {"event_type": "metric_update", "schema_version": 999, "event_key": "", "timestamp": "not-a-date", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": "NaN", "unit": "persons"}} | errors=["missing required field 'event_id'"]
-2026-11-09 01:43:47,028 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!! | errors=['payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)']
-2026-11-09 01:45:28,386 INFO    streaming.consumer: DLQ topic ready: salud.metric.dlq
-2026-11-09 01:45:40,612 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!! | errors=['payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)']
-2026-11-09 01:45:40,619 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:garbage
-2026-11-09 01:46:00,352 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {"event_type": "metric_update", "schema_version": 999, "event_key": "", "timestamp": "not-a-date", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": "NaN", "unit": "persons"}} | errors=["missing required field 'event_id'"]
-2026-11-09 01:46:00,353 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:invalid
-2026-11-09 01:46:00,361 INFO    streaming.consumer: consumed threshold_alert key=affiliates_by_department:11 metric=affiliates_by_department value=8500000
+Actual execution, UTC 2026-11-18T06:26:38.963264+00:00
+2026-11-18 06:22:27,532 WARNING streaming.consumer: THRESHOLD ALERT affiliates_by_department value=8500000 delta=600000 (persons)
+2026-11-18 06:22:27,577 INFO    streaming.consumer: consumed threshold_alert key=affiliates_by_department:11 metric=affiliates_by_department value=8500000
+2026-11-18 06:22:27,608 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!! | errors=['payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)']
+2026-11-18 06:22:28,132 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:garbage
+2026-11-18 06:22:28,135 WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {"event_type": "metric_update", "schema_version": 999, "event_key": "", "timestamp": "not-a-date", "metric_name": "affiliates_by_department", "payload": {"metric_name": "affiliates_by_department", "value": "NaN", "unit": "persons"}} | errors=["missing required field 'event_id'"]
+2026-11-18 06:22:28,142 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:invalid
+2026-11-18 06:22:28,368 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:00 metric=affiliates_by_department value=1315701.0
+2026-11-18 06:22:28,385 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:05 metric=affiliates_by_department value=6876866.0
+2026-11-18 06:22:28,403 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:08 metric=affiliates_by_department value=2755182.0
+2026-11-18 06:22:28,439 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:11 metric=affiliates_by_department value=8120311.0
+2026-11-18 06:22:28,520 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:13 metric=affiliates_by_department value=2284134.0
+2026-11-18 06:22:28,589 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:15 metric=affiliates_by_department value=1183559.0
+2026-11-18 06:22:28,664 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:17 metric=affiliates_by_department value=934592.0
+2026-11-18 06:22:28,737 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:18 metric=affiliates_by_department value=413663.0
+2026-11-18 06:22:28,812 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:19 metric=affiliates_by_department value=1328807.0
+2026-11-18 06:22:28,886 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:20 metric=affiliates_by_department value=1264145.0
+2026-11-18 06:22:28,959 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:23 metric=affiliates_by_department value=1704832.0
+2026-11-18 06:22:29,098 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:25 metric=affiliates_by_department value=2609762.0
+2026-11-18 06:22:29,168 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:27 metric=affiliates_by_department value=441356.0
+2026-11-18 06:22:29,218 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:41 metric=affiliates_by_department value=1173970.0
+2026-11-18 06:22:29,283 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:44 metric=affiliates_by_department value=998065.0
+2026-11-18 06:22:29,359 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:47 metric=affiliates_by_department value=1400031.0
+2026-11-18 06:22:29,434 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:50 metric=affiliates_by_department value=1047877.0
+2026-11-18 06:22:29,521 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:52 metric=affiliates_by_department value=1483169.0
+2026-11-18 06:22:29,614 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:54 metric=affiliates_by_department value=1624730.0
+2026-11-18 06:22:29,689 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:63 metric=affiliates_by_department value=574390.0
+2026-11-18 06:22:29,784 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:66 metric=affiliates_by_department value=1047337.0
+2026-11-18 06:22:29,865 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:68 metric=affiliates_by_department value=2259491.0
+2026-11-18 06:22:29,937 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:70 metric=affiliates_by_department value=970769.0
+2026-11-18 06:22:30,013 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:73 metric=affiliates_by_department value=1319366.0
+2026-11-18 06:22:30,082 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:76 metric=affiliates_by_department value=4622750.0
+2026-11-18 06:22:30,158 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:81 metric=affiliates_by_department value=290188.0
+2026-11-18 06:22:30,231 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:85 metric=affiliates_by_department value=422616.0
+2026-11-18 06:22:30,304 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:86 metric=affiliates_by_department value=325580.0
+2026-11-18 06:22:30,392 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:88 metric=affiliates_by_department value=62879.0
+2026-11-18 06:22:30,526 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:91 metric=affiliates_by_department value=76814.0
+2026-11-18 06:22:30,582 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:94 metric=affiliates_by_department value=50608.0
+2026-11-18 06:22:30,623 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:95 metric=affiliates_by_department value=85637.0
+2026-11-18 06:22:30,690 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:97 metric=affiliates_by_department value=33662.0
+2026-11-18 06:22:30,757 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:99 metric=affiliates_by_department value=79399.0
+2026-11-18 06:22:30,907 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:05 metric=capacity_by_department value=25267.0
+2026-11-18 06:22:31,018 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:08 metric=capacity_by_department value=14678.0
+2026-11-18 06:22:31,081 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:11 metric=capacity_by_department value=37158.0
+2026-11-18 06:22:31,184 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:13 metric=capacity_by_department value=10848.0
+2026-11-18 06:22:31,269 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:15 metric=capacity_by_department value=4750.0
+2026-11-18 06:22:31,364 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:17 metric=capacity_by_department value=4642.0
+2026-11-18 06:22:31,442 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:18 metric=capacity_by_department value=1585.0
+2026-11-18 06:22:31,522 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:19 metric=capacity_by_department value=4966.0
+2026-11-18 06:22:31,619 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:20 metric=capacity_by_department value=7496.0
+2026-11-18 06:22:31,697 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:23 metric=capacity_by_department value=8629.0
+2026-11-18 06:22:31,778 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:25 metric=capacity_by_department value=8568.0
+2026-11-18 06:22:31,784 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:27 metric=capacity_by_department value=1625.0
+2026-11-18 06:22:31,790 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:41 metric=capacity_by_department value=4605.0
+2026-11-18 06:22:31,821 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:44 metric=capacity_by_department value=4196.0
+2026-11-18 06:22:31,853 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:47 metric=capacity_by_department value=7379.0
+2026-11-18 06:22:31,920 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:50 metric=capacity_by_department value=4946.0
+2026-11-18 06:22:32,036 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:52 metric=capacity_by_department value=6524.0
+2026-11-18 06:22:32,069 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:54 metric=capacity_by_department value=5778.0
+2026-11-18 06:22:32,147 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:63 metric=capacity_by_department value=2351.0
+2026-11-18 06:22:32,219 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:66 metric=capacity_by_department value=4311.0
+2026-11-18 06:22:32,293 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:68 metric=capacity_by_department value=10909.0
+2026-11-18 06:22:32,368 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:70 metric=capacity_by_department value=5715.0
+2026-11-18 06:22:32,440 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:73 metric=capacity_by_department value=5165.0
+2026-11-18 06:22:32,515 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:76 metric=capacity_by_department value=20974.0
+2026-11-18 06:22:32,613 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:81 metric=capacity_by_department value=1205.0
+2026-11-18 06:22:32,670 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:85 metric=capacity_by_department value=1832.0
+2026-11-18 06:22:32,766 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:86 metric=capacity_by_department value=1356.0
+2026-11-18 06:22:32,841 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:88 metric=capacity_by_department value=267.0
+2026-11-18 06:22:32,886 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:91 metric=capacity_by_department value=446.0
+2026-11-18 06:22:32,981 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:94 metric=capacity_by_department value=96.0
+2026-11-18 06:22:33,028 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:95 metric=capacity_by_department value=277.0
+2026-11-18 06:22:33,118 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:97 metric=capacity_by_department value=50.0
+2026-11-18 06:22:33,178 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:99 metric=capacity_by_department value=164.0
+2026-11-18 06:22:33,256 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:00 metric=affiliates_by_department value=1315701.0
+2026-11-18 06:22:33,338 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:05 metric=affiliates_by_department value=6876866.0
+2026-11-18 06:22:33,408 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:08 metric=affiliates_by_department value=2755182.0
+2026-11-18 06:22:33,492 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:11 metric=affiliates_by_department value=8120311.0
+2026-11-18 06:22:33,552 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:13 metric=affiliates_by_department value=2284134.0
+2026-11-18 06:22:33,626 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:15 metric=affiliates_by_department value=1183559.0
+2026-11-18 06:22:33,706 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:17 metric=affiliates_by_department value=934592.0
+2026-11-18 06:22:33,767 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:18 metric=affiliates_by_department value=413663.0
+2026-11-18 06:22:33,837 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:19 metric=affiliates_by_department value=1328807.0
+2026-11-18 06:22:33,911 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:20 metric=affiliates_by_department value=1264145.0
+2026-11-18 06:22:34,002 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:23 metric=affiliates_by_department value=1704832.0
+2026-11-18 06:22:34,059 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:25 metric=affiliates_by_department value=2609762.0
+2026-11-18 06:22:34,143 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:27 metric=affiliates_by_department value=441356.0
+2026-11-18 06:22:34,214 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:41 metric=affiliates_by_department value=1173970.0
+2026-11-18 06:22:34,367 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:44 metric=affiliates_by_department value=998065.0
+2026-11-18 06:22:34,555 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:47 metric=affiliates_by_department value=1400031.0
+2026-11-18 06:22:34,632 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:50 metric=affiliates_by_department value=1047877.0
+2026-11-18 06:22:34,723 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:52 metric=affiliates_by_department value=1483169.0
+2026-11-18 06:22:34,800 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:54 metric=affiliates_by_department value=1624730.0
+2026-11-18 06:22:34,895 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:66 metric=affiliates_by_department value=1047337.0
+2026-11-18 06:22:34,987 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:63 metric=affiliates_by_department value=574390.0
+2026-11-18 06:22:35,077 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:68 metric=affiliates_by_department value=2259491.0
+2026-11-18 06:22:35,175 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:70 metric=affiliates_by_department value=970769.0
+2026-11-18 06:22:35,203 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:73 metric=affiliates_by_department value=1319366.0
+2026-11-18 06:22:35,234 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:76 metric=affiliates_by_department value=4622750.0
+2026-11-18 06:22:35,261 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:81 metric=affiliates_by_department value=290188.0
+2026-11-18 06:22:35,269 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:85 metric=affiliates_by_department value=422616.0
+2026-11-18 06:22:35,300 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:86 metric=affiliates_by_department value=325580.0
+2026-11-18 06:22:35,347 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:88 metric=affiliates_by_department value=62879.0
+2026-11-18 06:22:35,417 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:91 metric=affiliates_by_department value=76814.0
+2026-11-18 06:22:35,495 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:94 metric=affiliates_by_department value=50608.0
+2026-11-18 06:22:35,574 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:95 metric=affiliates_by_department value=85637.0
+2026-11-18 06:22:35,640 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:97 metric=affiliates_by_department value=33662.0
+2026-11-18 06:22:35,727 INFO    streaming.consumer: consumed metric_update key=affiliates_by_department:99 metric=affiliates_by_department value=79399.0
+2026-11-18 06:22:35,864 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:05 metric=capacity_by_department value=25267.0
+2026-11-18 06:22:36,018 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:08 metric=capacity_by_department value=14678.0
+2026-11-18 06:22:36,117 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:11 metric=capacity_by_department value=37158.0
+2026-11-18 06:22:36,296 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:13 metric=capacity_by_department value=10848.0
+2026-11-18 06:22:36,383 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:15 metric=capacity_by_department value=4750.0
+2026-11-18 06:22:36,525 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:17 metric=capacity_by_department value=4642.0
+2026-11-18 06:22:36,534 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:18 metric=capacity_by_department value=1585.0
+2026-11-18 06:22:36,551 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:19 metric=capacity_by_department value=4966.0
+2026-11-18 06:22:36,557 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:20 metric=capacity_by_department value=7496.0
+2026-11-18 06:22:36,564 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:23 metric=capacity_by_department value=8629.0
+2026-11-18 06:22:36,572 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:25 metric=capacity_by_department value=8568.0
+2026-11-18 06:22:36,621 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:27 metric=capacity_by_department value=1625.0
+2026-11-18 06:22:36,697 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:41 metric=capacity_by_department value=4605.0
+2026-11-18 06:22:36,780 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:44 metric=capacity_by_department value=4196.0
+2026-11-18 06:22:36,858 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:47 metric=capacity_by_department value=7379.0
+2026-11-18 06:22:36,932 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:50 metric=capacity_by_department value=4946.0
+2026-11-18 06:22:36,997 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:52 metric=capacity_by_department value=6524.0
+2026-11-18 06:22:37,062 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:54 metric=capacity_by_department value=5778.0
+2026-11-18 06:22:37,140 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:63 metric=capacity_by_department value=2351.0
+2026-11-18 06:22:37,216 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:66 metric=capacity_by_department value=4311.0
+2026-11-18 06:22:37,287 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:68 metric=capacity_by_department value=10909.0
+2026-11-18 06:22:37,367 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:70 metric=capacity_by_department value=5715.0
+2026-11-18 06:22:37,450 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:73 metric=capacity_by_department value=5165.0
+2026-11-18 06:22:37,523 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:76 metric=capacity_by_department value=20974.0
+2026-11-18 06:22:37,583 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:81 metric=capacity_by_department value=1205.0
+2026-11-18 06:22:37,656 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:85 metric=capacity_by_department value=1832.0
+2026-11-18 06:22:37,730 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:86 metric=capacity_by_department value=1356.0
+2026-11-18 06:22:37,821 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:88 metric=capacity_by_department value=267.0
+2026-11-18 06:22:37,878 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:91 metric=capacity_by_department value=446.0
+2026-11-18 06:22:37,957 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:94 metric=capacity_by_department value=96.0
+2026-11-18 06:22:38,026 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:95 metric=capacity_by_department value=277.0
+2026-11-18 06:22:38,100 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:97 metric=capacity_by_department value=50.0
+2026-11-18 06:22:38,189 INFO    streaming.consumer: consumed metric_update key=capacity_by_department:99 metric=capacity_by_department value=164.0

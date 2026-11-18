@@ -6,6 +6,7 @@ from .config import (
     DEPT_DANE_CODES, DISTRICT_TO_DEPT, normalize_text
 )
 from .api_extract import fetch_departments_from_api, fetch_regions_from_api
+from .numeric import parse_capacity
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,10 @@ def clean_facilities(df: pd.DataFrame) -> pd.DataFrame:
     
     care_level_raw = pd.to_numeric(df['care_level'], errors='coerce')
     df['care_level'] = care_level_raw.astype(object).where(care_level_raw.notna(), other=None)
-    df['installed_capacity'] = pd.to_numeric(df['installed_capacity'], errors='coerce').fillna(0).astype(int)
+    capacity = parse_capacity(df['installed_capacity'])
+    if capacity.isna().any() or not np.isfinite(capacity).all() or (capacity < 0).any():
+        raise ValueError("Installed capacity must be finite, numeric and non-negative")
+    df['installed_capacity'] = capacity.astype(int)
     
     df['nit'] = df['nit'].str.replace(',', '', regex=False)
     df['phone'] = df['phone'].str.extract(r'(\d+)')[0]

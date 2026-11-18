@@ -214,7 +214,8 @@ def run_snapshot(producer: KafkaProducer, conn, alert_threshold: float) -> int:
     return published
 
 
-def run_replay(producer: KafkaProducer, conn, interval: float, cycles: int) -> int:
+def run_replay(producer: KafkaProducer, conn, interval: float, cycles: int,
+               previous_values: Optional[Dict[str, float]] = None) -> int:
     """Replay historical DW values as events (SIMULATION).
 
     Every event carries ``source.mode='replay'`` and ``source.simulation=true``
@@ -222,14 +223,14 @@ def run_replay(producer: KafkaProducer, conn, interval: float, cycles: int) -> i
     """
     metrics = load_dw_metrics(conn)
     published = 0
-    previously_published: Dict[str, float] = {}
+    previously_published = previous_values if previous_values is not None else {}
 
     for cycle in range(1, cycles + 1):
         log.info("replay cycle %d/%d (%d historical metric values)", cycle, cycles, len(metrics))
         for metric in metrics:
-            # First cycle simulates arrival from zero; later cycles carry the
-            # previously replayed value as previous_value (delta = 0).
-            previous = previously_published.get(metric["event_key"], 0.0)
+            # The first observation establishes a baseline, not a net increase.
+            # Reuse state across --loop passes so a replay never invents growth.
+            previous = previously_published.get(metric["event_key"])
             event = build_event(
                 event_type="metric_update",
                 event_key=metric["event_key"],
@@ -237,7 +238,7 @@ def run_replay(producer: KafkaProducer, conn, interval: float, cycles: int) -> i
                 value=metric["value"],
                 unit=metric["unit"],
                 previous_value=previous,
-                delta=metric["value"] - previous,
+                delta=None if previous is None else metric["value"] - previous,
                 dimension={**metric["dimension"], "replay_cycle": cycle},
                 source={
                     "mode": "replay",
@@ -286,13 +287,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     total = 0
+    replay_state: Dict[str, float] = {}
     try:
         while True:
             started = time.time()
             if args.mode == "snapshot":
                 published = run_snapshot(producer, conn, args.alert_threshold)
             else:
-                published = run_replay(producer, conn, args.interval, args.cycles)
+                published = run_replay(producer, conn, args.interval, args.cycles, replay_state)
             total += published
             log.info("pass complete: %d events published (total=%d)", published, total)
 

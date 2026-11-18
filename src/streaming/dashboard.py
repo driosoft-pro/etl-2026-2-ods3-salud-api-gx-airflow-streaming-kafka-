@@ -109,7 +109,7 @@ def render_live():
                     f"✅ Consumidor **{heartbeat['consumer_id']}** activo — "
                     f"último heartbeat hace {age:.0f}s "
                     f"({int(heartbeat.get('events_processed') or 0):,} eventos procesados, "
-                    f"{int(heartbeat.get('invalid_events') or 0):,} inválidos)."
+                    f"{int(heartbeat.get('invalid_events') or 0):,} inválidos desde el último arranque)."
                 )
             else:
                 st.error(
@@ -144,22 +144,30 @@ def render_live():
               help="SUM(último valor por departamento)")
 
     # --- Trend charts ---
-    st.markdown("#### Tendencia de eventos (últimos valores recibidos)")
+    st.markdown("#### Valores recibidos por departamento")
+    available = sorted(set(series_aff.get("department", [])) | set(series_cap.get("department", [])))
+    department = st.selectbox("Departamento para las tendencias", available,
+                              key="trend_department") if available else None
+    st.caption("Cada serie compara observaciones del mismo departamento. Los KPIs superiores son totales acumulados.")
     c1, c2 = st.columns(2)
     with c1:
         if not series_aff.empty:
-            chart = series_aff.copy()
-            chart["hora"] = pd.to_datetime(chart["received_at"]).dt.strftime("%H:%M:%S")
-            st.line_chart(chart.set_index("hora")[["value"]],
-                          height=220, use_container_width=True)
+            chart = series_aff[series_aff["department"] == department].copy()
+            chart["received_at"] = pd.to_datetime(chart["received_at"], utc=True)
+            chart["value"] = pd.to_numeric(chart["value"], errors="coerce")
+            plot = st.line_chart if len(chart) > 1 else st.scatter_chart
+            plot(chart, x="received_at", y="value", height=220,
+                          width="stretch", alt="Afiliados observados del departamento seleccionado")
         else:
             st.info("Aún no se han recibido eventos de `affiliates_by_department`.")
     with c2:
         if not series_cap.empty:
-            chart = series_cap.copy()
-            chart["hora"] = pd.to_datetime(chart["received_at"]).dt.strftime("%H:%M:%S")
-            st.line_chart(chart.set_index("hora")[["value"]],
-                          height=220, use_container_width=True)
+            chart = series_cap[series_cap["department"] == department].copy()
+            chart["received_at"] = pd.to_datetime(chart["received_at"], utc=True)
+            chart["value"] = pd.to_numeric(chart["value"], errors="coerce")
+            plot = st.line_chart if len(chart) > 1 else st.scatter_chart
+            plot(chart, x="received_at", y="value", height=220,
+                          width="stretch", alt="Capacidad observada del departamento seleccionado")
         else:
             st.info("Aún no se han recibido eventos de `capacity_by_department`.")
 
@@ -184,7 +192,7 @@ def render_live():
             })
             st.dataframe(events[["tipo", "clave", "métrica", "valor", "delta",
                                  "unidad", "simulación", "recibido (UTC)"]],
-                         use_container_width=True, height=300, hide_index=True)
+                         width="stretch", height=300, hide_index=True)
     with f2:
         if invalid.empty:
             st.success("Sin eventos inválidos (contrato cumplido).")
@@ -199,7 +207,7 @@ def render_live():
             })
             st.dataframe(inv[["#", "motivo", "violaciones", "payload crudo",
                               "recibido (UTC)"]],
-                         use_container_width=True, height=300, hide_index=True)
+                         width="stretch", height=300, hide_index=True)
 
 
 render_live()

@@ -12,9 +12,9 @@ Diseño:
   * :func:`apply_gx_to_results` combina el resultado GX con el chequeo nativo de
     pandas: la regla solo pasa si **ambos** lo hacen (política conservadora).
 
-Fallback: si ``great_expectations`` no está instalado o la validación lanza una
-excepción, se devuelve ``{"available": False, ...}`` y los gates siguen con sus
-chequeos nativos; el motivo queda documentado en la evidencia.
+Si ``great_expectations`` no está instalado o una suite no puede ejecutarse,
+sus expectativas se registran como fallidas. Los gates bloquean la carga:
+un chequeo nativo aprobado no sustituye una validación GX obligatoria.
 """
 
 from __future__ import annotations
@@ -184,9 +184,28 @@ def _pair_results(expectations: Sequence[Any], results: Sequence[Any]) -> List[A
     return paired
 
 
-def _unavailable(reason: str) -> Dict[str, Any]:
+def _unavailable(reason: str, suite_name: str, specs: Sequence[GxSpec]) -> Dict[str, Any]:
     status = gx_status()
-    status.update({"reason": reason, "expectations": [], "failed_rules": []})
+    entries = [
+        {
+            "rule_id": rule_id,
+            "expectation": _snake(type_name),
+            "success": False,
+            "error": "gx_validation_unavailable",
+            "reason": reason,
+        }
+        for rule_id, type_name, _kwargs in specs
+    ]
+    status.update({
+        "suite": suite_name,
+        "reason": reason,
+        "success": False,
+        "expectations": entries,
+        "expectations_total": len(entries),
+        "expectations_passed": 0,
+        "expectations_failed": len(entries),
+        "failed_rules": sorted({entry["rule_id"] for entry in entries}),
+    })
     status["available"] = False
     return status
 
@@ -244,10 +263,12 @@ def run_gx_suite(suite_name: str, df: pd.DataFrame, specs: Sequence[GxSpec]) -> 
 
     Devuelve un reporte con ``available=True`` y una entrada por expectativa
     (expectation, kwargs, success, observed values, rule_id), o bien
-    ``available=False`` con el motivo del fallback.
+    ``available=False`` con expectativas fallidas y el motivo del bloqueo.
     """
     if not GX_AVAILABLE:
-        return _unavailable(f"great_expectations no instalado: {GX_IMPORT_ERROR}")
+        return _unavailable(
+            f"great_expectations no instalado: {GX_IMPORT_ERROR}", suite_name, specs
+        )
 
     try:
         ctx = gx.get_context(mode="ephemeral")
@@ -330,9 +351,11 @@ def run_gx_suite(suite_name: str, df: pd.DataFrame, specs: Sequence[GxSpec]) -> 
             "expectations": entries,
             "success": len(failed) == 0,
         }
-    except Exception as exc:  # noqa: BLE001 - GX degrada a fallback nativo
-        logger.warning("GX suite '%s' no pudo ejecutarse; fallback nativo: %s", suite_name, exc)
-        return _unavailable(f"error al ejecutar el suite '{suite_name}': {exc}")
+    except Exception as exc:  # noqa: BLE001 - registrar y bloquear la suite obligatoria
+        logger.error("GX suite '%s' no pudo ejecutarse; carga bloqueada: %s", suite_name, exc)
+        return _unavailable(
+            f"error al ejecutar el suite '{suite_name}': {exc}", suite_name, specs
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -343,16 +366,16 @@ def combine_reports(reports: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     reports = [r for r in reports if r]
     ran = [r for r in reports if r.get("available")]
     summary: Dict[str, Any] = {
-        "available": bool(ran),
+        "available": bool(reports) and len(ran) == len(reports),
         "library": "great_expectations",
         "version": GX_VERSION if ran else None,
         "mode": "ephemeral",
         "suites_requested": len(reports),
         "suites_run": len(ran),
-        "expectations_total": sum(r.get("expectations_total", 0) for r in ran),
-        "expectations_passed": sum(r.get("expectations_passed", 0) for r in ran),
-        "expectations_failed": sum(r.get("expectations_failed", 0) for r in ran),
-        "failed_rules": sorted({rid for r in ran for rid in r.get("failed_rules", [])}),
+        "expectations_total": sum(r.get("expectations_total", 0) for r in reports),
+        "expectations_passed": sum(r.get("expectations_passed", 0) for r in reports),
+        "expectations_failed": sum(r.get("expectations_failed", 0) for r in reports),
+        "failed_rules": sorted({rid for r in reports for rid in r.get("failed_rules", [])}),
         "suites": [
             {
                 "suite": r.get("suite"),
@@ -367,10 +390,11 @@ def combine_reports(reports: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             for r in reports
         ],
     }
-    if not ran:
-        summary["fallback_reason"] = (
-            reports[0].get("reason") if reports else "no se ejecutó ninguna suite GX"
-        )
+    if not summary["available"]:
+        summary["blocked_reason"] = "; ".join(
+            str(r.get("reason", "suite GX no disponible"))
+            for r in reports if not r.get("available")
+        ) or "no se ejecutó ninguna suite GX"
     return summary
 
 
@@ -387,7 +411,7 @@ def apply_gx_to_results(
     by_rule: Dict[str, List[Dict[str, Any]]] = {}
     failed_rules: Set[str] = set()
     for report in reports:
-        if not report or not report.get("available"):
+        if not report:
             continue
         for entry in report.get("expectations", []):
             by_rule.setdefault(entry["rule_id"], []).append(entry)

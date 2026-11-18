@@ -1,5 +1,7 @@
 # etl-2026-2-ods3-salud-api-gx-airflow-streaming-kafka-
 
+
+
 > 📄 **Spanish version:** [README_ES.md](README_ES.md) · This documentation in English: `README.md`
 
 **Health Colombia — SDG 3 (Good health and well-being):** an integrated batch + streaming ETL
@@ -13,12 +15,12 @@ Streamlit**.
 |---|---|---|
 | Data Warehouse | PostgreSQL 16.15 | `localhost:5432` (`salud_colombia`) |
 | Batch orchestration | Apache Airflow 3.1.8 (custom + GX) | <http://localhost:8080> |
-| Data Quality | Great Expectations 1.24.1 (inside the DAG validation gates) | — |
+| Data Quality | Great Expectations 1.25.0 (inside the DAG validation gates) | — |
 | Historical dashboard | Apache Superset 6.1.0 | <http://localhost:8088> |
 | Streaming | Apache Kafka 3.8.0 (single broker) | `localhost:19092` (host) / `kafka:9092` (internal) |
 | Real-time dashboard | Streamlit | <http://localhost:8501> |
-| REST API over the DW | PostgREST | <http://localhost:3000> |
-| Tests | pytest (123 tests) | `pytest -q` |
+| REST API over the DW | PostgREST | <http://localhost:3220> |
+| Tests | pytest (regression suite) | `pytest -q` |
 
 **Index**
 
@@ -67,7 +69,7 @@ seconds-level latency to detect relevant changes.
 
 | | Batch (sections 2.4–2.5) | Streaming (sections 2.6–2.7) |
 |---|---|---|
-| Trigger | Manual DAG run (or `src.etl_main`) | Continuous producer every 10 s + historical replay |
+| Trigger | Daily scheduled DAG + manual trigger (or `src.etl_main`) | Continuous producer every 10 s + historical replay |
 | Latency | Minutes (run duration ≈ 26 s) | Seconds (publish → consumer → dashboard ≈ 1–3 s) |
 | Storage | Dimensions/facts + views in PostgreSQL | `streaming.*` (event_log, metric_state, invalid_events, heartbeat) |
 | Human consumer | Superset (`:8088`), historical queries | Streamlit (`:8501`), 3 s auto-refresh |
@@ -82,12 +84,12 @@ seconds-level latency to detect relevant changes.
 | Source | Type | Content | Path / endpoint |
 |---|---|---|---|
 | SGSSS affiliates | Static CSV (2026-09-06 snapshot) | 3,369 rows × 8 columns: department, municipality, regime, year, month, num_persons | `data/raw/affiliates_by_department_municipality_regime_20260906.csv` |
-| Healthcare facilities (REPS) | Static CSV (2026-09-06 snapshot) | 41,427 rows × ~24 columns: provider, nature, care level, installed capacity (beds/rooms/clinics…) | `data/raw/healthcare_facilities_by_level_capacity_20260906.csv` |
+| Healthcare facilities (REPS) | Static CSV (2026-09-06 snapshot) | 41,427 rows × 20 columns: provider, nature, care level, installed capacity (beds/rooms/clinics…) | `data/raw/healthcare_facilities_by_level_capacity_20260906.csv` |
 | API Colombia | Dynamic REST API | Departments and regions with official population, surface and DANE codes → enriches `dim_geografia` and feeds R6/R7 | `https://api-colombia.com/api/v1` (`/Department`, `/Region`) |
 
 The API extractor (`src/api_extract.py`) calls the endpoint with a 15 s timeout and **saves a
 JSON cache** in `data/raw/`; if the API is down it falls back to the cache
-(`source=fallback_cache`) so the batch run stays reproducible. Raw snapshots are versioned in
+(`source=local_cache`) so the batch run stays reproducible. Raw snapshots are versioned in
 the repo.
 
 **Why are streaming events generated separately?** The CSV/API only change when a new snapshot
@@ -114,8 +116,14 @@ Notebook: [`notebooks/01_data_validation_cleanup.ipynb`](notebooks/01_data_valid
 | `nit IPS` with separators (`890,980,643`) | garbage in a key column | strip commas before building `dim_facility` |
 | Heterogeneous department names: `VALLE` (126 rows), `SAN ANDRES`, `NO APLICA`; special districts reported as departments (`CARTAGENA` ×3, `SANTA MARTA` ×3) | CSV ↔ API join would fail without normalization | `DEPT_NORMALIZE`, `DISTRICT_TO_DEPT`, `REGION_MAP` (`src/config.py`) → single conformed `dim_geografia` → **DQ-08** (≥ 95% match rate) |
 
-Notebook **§9** documents the full mapping *EDA finding → cleanup → DQ rule DQ-01…DQ-12 → GX
+Notebook **§10** documents the full mapping *EDA finding → cleanup → DQ rule DQ-01…DQ-12 → GX
 expectation*. All notebook outputs are executed and stored in the repo.
+
+API EDA is executed in notebook **§9**, including Department/Region completeness, ID uniqueness,
+positive population/surface, geographic joins and regional consistency. The executed notebook has 45 code cells and three embedded figures; API input has 33 departments and six regions, with no invalid demographic values in the cached snapshot. Three figures and a
+machine-readable profile are included under [`docs/evidence/profiling/`](docs/evidence/profiling/).
+The region mapping follows the cached API classification, including Norte de Santander → Andina,
+Vichada → Orinoquia and Guainia → Amazonia. See notebook **§10** for the EDA-to-DQ mapping.
 
 ---
 
@@ -179,7 +187,7 @@ go to the `streaming.invalid_events` table **and** to the `salud.metric.dlq` DLQ
 | Service | Image / build | Host port |
 |---|---|---|
 | `postgres` (DW + streaming metadata) | `postgres:16` | 5432 |
-| `postgrest` | `postgrest/postgrest` | 3000 |
+| `postgrest` | `postgrest/postgrest` | 3220 |
 | `kafka` | `apache/kafka:3.8.0` | 19092 → 9092 |
 | `airflow-webserver` / `scheduler` / `dag-processor` / `airflow-init` | `Dockerfile.airflow` → `localhost/health-airflow:3.1.8` | 8080 |
 | `superset` / `superset-init` / `superset-bootstrap` | `Dockerfile.superset` → `apache/superset:6.1.0` | 8088 |
@@ -195,7 +203,7 @@ go to the `streaming.invalid_events` table **and** to the `salud.metric.dlq` DLQ
 
 | DAG | Purpose | Schedule |
 |---|---|---|
-| `reliable_health_pipeline` | **Test A** — full production pipeline (8/8 tasks) | manual (`schedule=None`, `catchup=False`) |
+| `reliable_health_pipeline` | **Test A** — full production pipeline (8/8 tasks) | daily 06:00 UTC + manual (`ETL_SCHEDULE`, `catchup=False`) |
 | `bad_health_pipeline` | **Test B** — controlled failure demo: injects `regime_id='INVALID_Z'` to prove the Gate 1 block | manual |
 
 Both share the `create_health_pipeline()` structure in
@@ -239,6 +247,12 @@ extract_api ─────────────────► validate_api_
 8. **verify_dw_and_kpis** — recounts dimensions/facts, affiliate/bed totals and closes the run
    in `audit.etl_run` (`SUCCESS` / `BLOCKED_QUALITY` / `FAILED`).
 
+
+Each Airflow run keeps its extracted and prepared snapshots under `data/batches/` (local runtime
+artifacts, gitignored). Validation and loading use the same prepared files; loading checks their
+fingerprints instead of rebuilding data from mutable raw sources. Keep the snapshot directory
+until the run has finished so a task retry can use the same batch.
+
 The **manual** batch ETL (same code outside Airflow) is also available:
 
 ```bash
@@ -247,18 +261,19 @@ podman-compose run --rm etl python -m src.etl_main
 
 ### 4.3 Execution evidence (Test A / Test B)
 
-- **Test A** `reliable_health_pipeline` → run_id
-  `manual__2026-11-09T01:36:13.429328+00:00`: **8/8 tasks in `success`**, audit `SUCCESS` with
-  **12/12 DQ rules**, GX **11/11 + 4/4 + 10/10 expectations**, duration ≈ 26 s. Gate logs:
-  `"[...] Validation Gate passed successfully (GX 11/11 expectations)"` (see §11).
-- **Test B** `bad_health_pipeline` → run_id
-  `manual__2026-11-09T01:38:22.905052+00:00`: **`failed`** — `validate_primary_raw` fails
-  (DQ-02 detects `INVALID_Z` in both native and GX: 10/11), 3 tasks `success`, 4
-  `upstream_failed`, audit **`BLOCKED_QUALITY` 4/5**. The DW is **not** modified.
+The historical captures below show a successful run and a controlled critical failure. Current
+JSON validation outputs are under `docs/evidence/gx/`; use each report's `executed_at` and the
+run IDs in `audit.etl_run` to identify the latest execution. The validation contract now expects
+**12/12 rules** and GX **11/11 + 6/6 + 10/10** expectations. The two extra API expectations reject
+missing population/surface before checking their positive ranges.
 
-![Airflow — DAG list with latest runs (Test A ✅ / Test B ❌)](docs/evidence/screenshots/airflow_dags.png)
+- **Test A:** `reliable_health_pipeline` must finish with eight `success` tasks and audit `SUCCESS`.
+- **Test B:** `bad_health_pipeline` injects `INVALID_Z`; Gate 1 fails, dependent tasks become
+  `upstream_failed`, audit records `BLOCKED_QUALITY`, and final DW rows remain unchanged.
 
-![Airflow — Test A task details (8/8 success)](docs/evidence/screenshots/airflow_dag_detail.png)
+![Airflow DAGs: successful and controlled-failure runs](docs/evidence/screenshots/airflow_dags.png)
+
+![Airflow task details](docs/evidence/screenshots/airflow_dag_detail.png)
 
 ---
 
@@ -277,14 +292,19 @@ Source: [`src/quality/rules.py`](src/quality/rules.py); executed by
 | DQ-04 | raw_facilities | essential identity/capacity attributes not null | ≥ 99.5% | `expect_column_values_to_not_be_null` |
 | DQ-05 | raw_facilities | installed capacity ≥ 0 | 100% | `expect_column_values_to_be_between` |
 | DQ-06 | raw_api_departments | name + id mandatory | 100% | `expect_column_values_to_not_be_null` |
-| DQ-07 | raw_api_departments | population and surface > 0 | 100% | `expect_column_values_to_be_between` |
+| DQ-07 | raw_api_departments | population and surface are non-null, numeric and > 0 | 100% | `expect_column_values_to_be_between` |
 | DQ-08 | integration_gate | ≥ 95% of CSV departments resolve to API records | ≥ 95% | `expect_integration_key_match_rate` |
 | DQ-09 | prepared_fact_affiliates | grain `(sk_time, sk_geografia, sk_regime)` unique | 100% | `expect_compound_columns_to_be_unique` |
 | DQ-10 | prepared_fact_capacity | grain `(sk_time, sk_facility, sk_capacity_type)` unique | 100% | `expect_compound_columns_to_be_unique` |
 | DQ-11 | prepared_facts | zero orphans in fact foreign keys | 100% | `expect_foreign_keys_to_exist_in_dimensions` |
 | DQ-12 | prepared_facts | affiliate sum reconciles with raw input | error < 0.01% | `expect_sum_reconciliation` |
 
-### 5.2 Real Great Expectations 1.24.1 integration
+Numeric person/capacity measures must be finite; raw capacity validation never fills invalid values with zero.
+
+Raw capacity includes `1,000`: `src/numeric.py` parses it as 1000 and is shared by validation, cleanup and the notebook. DW capacity totals 219,758 units. Malformed grouping (for example `1,5`) is rejected.
+
+
+### 5.2 Real Great Expectations 1.25.0 integration
 
 [`src/quality/gx_backend.py`](src/quality/gx_backend.py) builds, for each gate:
 
@@ -300,8 +320,7 @@ Source: [`src/quality/rules.py`](src/quality/rules.py); executed by
 **Conservative AND combination:** every rule is evaluated with the native implementation
 (pandas) **and**, when an equivalent GX expectation exists, also with Great Expectations; the
 gate only passes if **both** approve. 11 of the 12 rules have a GX counterpart (DQ-08, a match
-rate ≥ 95%, is computed natively). If GX is not installed, `gx_backend` documentedly degrades
-to native validation (`available=false`) without breaking the DAG.
+rate ≥ 95%, is computed natively). GX is mandatory: an unavailable library, an execution error or an incomplete suite is a critical failure. The gate records the reason and blocks loading instead of silently accepting native-only validation.
 
 ### 5.3 Behavior on critical failure
 
@@ -314,8 +333,8 @@ to native validation (`available=false`) without breaking the DAG.
 
 | File | Gate | Result |
 |---|---|---|
-| [`docs/evidence/gx/primary_raw_results.json`](docs/evidence/gx/primary_raw_results.json) | Gate 1 | 5/5 rules · GX **11/11** expectations (3 suites) · `available=true v=1.24.1` |
-| [`docs/evidence/gx/api_raw_results.json`](docs/evidence/gx/api_raw_results.json) | Gate 2 | 2/2 rules · GX **4/4** expectations |
+| [`docs/evidence/gx/primary_raw_results.json`](docs/evidence/gx/primary_raw_results.json) | Gate 1 | 5/5 rules · GX **11/11** expectations (3 suites) · `available=true v=1.25.0` |
+| [`docs/evidence/gx/api_raw_results.json`](docs/evidence/gx/api_raw_results.json) | Gate 2 | 2/2 rules · GX **6/6** expectations |
 | [`docs/evidence/gx/prepared_results.json`](docs/evidence/gx/prepared_results.json) | Gate 3 | 5/5 rules · GX **10/10** expectations (includes DQ-12) |
 
 In **Test B** the same JSON shows `DQ-02 → FAIL` with
@@ -345,7 +364,7 @@ in [`sql/init.sql`](sql/init.sql); data in
 | Fact | Grain | Rows | Total |
 |---|---|---|---|
 | `fact_affiliates` | period × geography × regime (2022-Q2 snapshot) | 3,369 | **51,182,238** affiliates |
-| `fact_facility_capacity` | period × facility × capacity type × geography (2022-Q4 snapshot) | 31,496 | **218,758** capacity units |
+| `fact_facility_capacity` | period × facility × capacity type × geography (2022-Q4 snapshot) | 31,496 | **219,758** capacity units |
 
 Every foreign key has a verifiable `REFERENCES` constraint (real referential integrity; DQ-11
 also validates it on every run).
@@ -384,27 +403,27 @@ also validates it on every run).
 
 **Tool:** Apache Superset 6.1.0 → <http://localhost:8088> (login `admin/admin` for local
 development). **Connection:** SQLAlchemy URI to the PostgreSQL DW registered by
-[`scripts/superset_bootstrap.py`](scripts/superset_bootstrap.py); **7 datasets**
+[`scripts/superset_bootstrap.py`](scripts/superset_bootstrap.py); **7 base datasets**
 (`v_affiliates_summary`, `v_facility_summary`, `v_r6_demographic_coverage`,
-`v_r7_territorial_capacity`, `fact_affiliates`, `fact_facility_capacity`, `dim_geografia`).
+`v_r7_territorial_capacity`, `fact_affiliates`, `fact_facility_capacity`, `dim_geografia`), plus `dim_facility` registered by the chart script (**8 total**).
 Dashboard: **`ods3-salud-colombia`**
 (<http://localhost:8088/superset/dashboard/ods3-salud-colombia/>), charts created by
 [`scripts/superset_charts_bootstrap.py`](scripts/superset_charts_bootstrap.py).
 
 | Chart | Dataset | Business question |
 |---|---|---|
-| **R1** – Affiliates by Regime | `v_affiliates_summary` | how much does each regime weigh? (contributive dominates) |
-| **R2** – Top 10 Departments by Affiliates | `v_affiliates_summary` | where is affiliation concentrated? (Bogotá ≈ 6.4 M) |
-| **R3** – Facilities by Nature | `v_facility_summary` | private (25,067) vs public (16,174) vs mixed |
+| **R1** – Affiliates by Regime | `v_affiliates_summary` | how much does each regime weigh? (subsidized 24,599,910; contributory 24,341,821) |
+| **R2** – Top 10 Departments by Affiliates | `v_affiliates_summary` | where is affiliation concentrated? (Bogotá total 8,120,311) |
+| **R3** – Facilities by Nature | `dim_facility` | unique facilities: private 9,632 / public 1,274 / mixed 15 |
 | **R4** – Beds per 1000 Inhabitants | `v_r7_territorial_capacity` | relative staffing (leaders: Cesar 2.83, Amazonas 2.74, Atlántico 2.70) |
 | **R5** – Affiliates by Region and Regime | `v_affiliates_summary` | regional distribution (Andina/Caribe/Pacific…) |
-| **R6** – Demographic Coverage by Department | `v_r6_demographic_coverage` | affiliates vs official population: categories *Universal Meta Adequate*, *High Concentration/Mobility* (coverage >100% = mobility), *Deficit* |
+| **R6** – Demographic Coverage by Department | `v_r6_demographic_coverage` | affiliates vs official population: categories *Universal Meta Adequate*, *High Concentration/Mobility* (coverage >100% requires investigating the population/affiliate reference dates and mobility), *Deficit* |
 | **R7** – Territorial Capacity by Department | `v_r7_territorial_capacity` | facilities, beds, beds/1000 pop and **hospital alert level** |
 
-**Main insights:** affiliation exceeds 100% of the population in high-mobility departments
+**Main insights:** affiliation exceeds 100% of the API population in some departments
 (Risaralda 107.1%, Cundinamarca 105.5%), the Andina region holds most affiliates, and hospital
-capacity is uneven (Cesar/Amazonas/Atlántico in high alert, others in moderate/critical alert)
-— historical insights that require the batch DW (full 2022 snapshot).
+capacity is uneven (Cesar/Amazonas/Atlántico have high installed capacity; other departments show moderate capacity or a deficit)
+— descriptive snapshot comparisons. Coverage above 100% alone does not establish mobility or causality; population/API and affiliate reference dates can differ.
 
 ![Superset batch analytical dashboard (R1–R7)](docs/evidence/screenshots/superset_dashboard.png)
 
@@ -416,7 +435,7 @@ capacity is uneven (Cesar/Amazonas/Atlántico in high alert, others in moderate/
 
 | Mode | Behavior |
 |---|---|
-| `snapshot` (default, production) | Every **10 s** (`STREAMING_PRODUCER_INTERVAL`) it queries the DW facts, compares them with the last published value (`streaming.producer_state`) and **publishes only what changed** — it never re-publishes an unchanged KPI (analytical justification). If `\|delta\| ≥ 5%` it additionally emits a `threshold_alert` event (`--alert-threshold 0.05`). |
+| `snapshot` (default, production) | Every **10 s** (`STREAMING_PRODUCER_INTERVAL`) it queries the DW facts, compares them with the last published value (`streaming.producer_state`) and **publishes only what changed** — it never re-publishes an unchanged KPI (analytical justification). If `\|delta\| > 5%` it additionally emits a `threshold_alert` event (`--alert-threshold 0.05`). |
 | `replay` (simulation) | Replays DW history at 0.5 s per event. **Explicitly flagged** in every event: `"source": {"mode": "replay", "simulation": true}`. |
 
 ```bash
@@ -425,7 +444,7 @@ podman exec streaming_producer_salud python -m src.streaming.producer --mode sna
 ```
 
 **Generation and frequency:** events derived from `fact_affiliates` /
-`fact_facility_capacity` (aggregated per department), on average 134 events per full pass,
+`fact_facility_capacity` (aggregated per department), 67 metric updates per full pass (134 for a two-cycle replay),
 checked every 10 s. **Value of low latency:** an affiliation or capacity change reaches the
 dashboard in seconds (vs. waiting for the next batch run), enabling near-real-time
 `threshold_alert` monitoring for SDG 3.
@@ -495,7 +514,7 @@ without changes).
 
 **Consumer-to-dashboard integration:** the Kafka consumer writes to PostgreSQL (`streaming.*`);
 Streamlit **reads those tables directly with psycopg2 and auto-refreshes every 3 s**
-(`st_autorefresh`). There are no websockets: the mechanism is polling over the same transactional
+(`st.fragment(run_every=...)`). There are no websockets: the mechanism is polling over the same transactional
 database — simple, tool-compatible and enough for seconds-level latency.
 
 **Metrics shown (≥3 required; 7 are shown):** processed events, invalid events, threshold
@@ -527,88 +546,133 @@ and shows:
 
 ### 10.1 Requirements
 
-- **Git**; **Python 3.12** (optional: [Nix](flake.nix) dev shell with `uv`, podman, psql and
-  chromium);
-- **Podman ≥ 4 + `podman-compose`** (or Docker + `docker compose`; the files are standard);
-- ~4 GB free RAM for the 11 containers;
-- No paid external dependencies: the only two sources are CSVs included in the repo and the
-  public API `api-colombia.com` (with an included backup cache).
+- Git and Docker Desktop with Docker Compose v2, using Linux containers. Podman with a current
+  Compose provider is supported through the base Compose file.
+- Approximately 4 GB free RAM for this demonstration stack; leave additional memory for the browser.
+- Python 3.12 is optional for host-side development. The normal Docker path runs the scripts inside containers.
+- The two CSVs and API cache are included. No paid API or token is required.
 
-### 10.2 Startup (step by step)
+### 10.2 Startup (Docker Desktop / PowerShell)
+
+Run `start.bat` on Windows or `bash start.sh` on Linux/macOS for the management menu.
+Actions: `start`, `stop`, `validate`, `reset` (preserve data), `wipe` (remove project data),
+`steps` (guided clean rebuild), `auto` (clean rebuild, load, bootstrap and tests), `restart`
+and `setup` (load/bootstrap without wiping). Pass `--help` for usage. Destructive actions
+require typing `ELIMINAR` and only target this project's volumes and verified data directories.
+Windows uses `scripts/project_manager.ps1`; host Python is not required.
+See [the Spanish instructions](README_ES.md#102-puesta-en-marcha-docker-desktop--powershell)
+for the full option table and data retention details.
+Use `start.bat kafka` or `bash start.sh kafka` to inspect Kafka health, topics, partitions,
+consumer groups, lag, log disk usage and one-shot CPU/memory/network/block I/O. This is a
+point-in-time view; historical resource charts require periodic capture or JMX/Prometheus.
+Use `start.bat kafka-live` or `bash start.sh kafka-live` for a five-second live refresh;
+press `Ctrl+C` to return. This mode is read-only and does not publish events or commit offsets.
+
+Run these commands from the repository root. Keep the same PowerShell window for `$dc`.
+The versioned override disables Podman's `keep-id` option without changing names or ports.
+
+```powershell
+# Keep an existing local .env; create it only on a fresh checkout.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+if (!(Test-Path config/simple_auth_manager_passwords.json)) {
+    '{"airflow":"airflow"}' | Set-Content -Encoding ascii config/simple_auth_manager_passwords.json
+}
+$dc = @('-f', 'docker-compose.yml')
+docker compose @dc config --quiet
+docker compose @dc up -d --build
+docker compose @dc ps -a
+```
+
+The startup graph waits for PostgreSQL/Kafka health and for successful database initialization.
+Airflow's scheduler and DAG processor also wait for its API server. `airflow-init` and
+`superset-init` finishing with `Exited (0)` is expected; a nonzero exit blocks dependent services.
+Container DNS (`postgres`, `airflow-webserver`, `superset`, `kafka`) is used directly. Mapping
+these names to `host-gateway` would route internal traffic through the host and can cause HTTP 500 errors.
+
+1. Open <http://localhost:8080> (`airflow` / `airflow`) and wait for `reliable_health_pipeline`.
+2. Trigger the first load; wait until **all eight tasks** finish in `success` before creating charts:
+
+```powershell
+docker exec airflow_scheduler_salud airflow dags trigger reliable_health_pipeline
+```
+
+3. Register the DW and create the dashboard's seven charts:
+
+```powershell
+docker compose @dc --profile bootstrap run --rm superset-bootstrap
+docker compose @dc exec superset /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
+```
+
+Open [the historical dashboard](http://localhost:8088/superset/dashboard/ods3-salud-colombia/)
+(`admin` / `admin`) and [the streaming dashboard](http://localhost:8501).
+PostgREST uses <http://localhost:3220> by default (`POSTGREST_PORT` in `.env`); its container still
+listens on 3000. If Windows reserves a host port, choose another free `POSTGREST_PORT` and recreate
+only `postgrest`; never change the container port or database address to work around that reservation.
+
+For Podman on Linux, create `.env` and the password JSON, then use `podman-compose` with the base file:
 
 ```bash
-# 1) Clone
-git clone https://github.com/driosoft-pro/etl-2026-2-ods3-salud-api-gx-airflow-streaming-kafka-.git
-cd etl-2026-2-ods3-salud-api-gx-airflow-streaming-kafka-
-
-# 2) Local configuration (.env is NEVER committed)
 cp .env.example .env
-
-# 3) Airflow development login (SimpleAuthManager requires the file;
-#    without it Airflow generates a random password)
-printf '{"airflow": "airflow"}' > config/simple_auth_manager_passwords.json
-
-# 4) Start everything (PostgreSQL, Kafka, Airflow, Superset, streaming, Streamlit)
-podman-compose up -d
-podman ps   # wait until all containers are "Up" (postgres/kafka "healthy")
-
-# 5) Superset bootstrap: DW connection + 7 datasets + dashboard
+printf '{"airflow":"airflow"}' > config/simple_auth_manager_passwords.json
+podman-compose up -d --build
+# After the first successful DAG load:
 podman-compose --profile bootstrap run --rm superset-bootstrap
-#    (note: if podman-compose "run" recreates a container, run again: podman-compose up -d)
-
-# 6) R1–R7 dashboard charts (from the host)
-SUPERSET_URL=http://localhost:8088 python3 scripts/superset_charts_bootstrap.py
+podman exec superset_salud /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
 ```
 
-### 10.3 Run and verify the complete system
+### 10.3 Execute and verify
 
-```bash
-# --- Batch ETL in Airflow (Test A: must end 8/8 success) ---
-podman exec airflow_scheduler_salud airflow dags trigger reliable_health_pipeline
+`ETL_SCHEDULE` defaults to `0 6 * * *`: **daily at 06:00 UTC / 01:00 America/Bogota**.
+`catchup=False` avoids historical backfills and `max_active_runs=1` prevents concurrent full refreshes.
+Set `ETL_SCHEDULE=none` in `.env` for manual-only demonstrations, then recreate Airflow services.
+The controlled-failure DAG remains manual.
 
-# --- Test B: controlled failure (must end failed / BLOCKED_QUALITY) ---
-podman exec airflow_scheduler_salud airflow dags trigger bad_health_pipeline
+```powershell
+# Inspect actual runs; copy the desired run_id from this output or from the UI.
+docker exec airflow_scheduler_salud airflow dags list-runs reliable_health_pipeline -o plain
 
-# --- Inspect task results ---
-podman exec airflow_scheduler_salud airflow dags list-runs reliable_health_pipeline -o plain
-podman exec airflow_scheduler_salud airflow tasks states-for-dag-run reliable_health_pipeline \
-  manual__2026-11-09T01:36:13.429328+00:00 -o plain
+# Controlled critical failure: expect failed / BLOCKED_QUALITY and an unchanged DW.
+docker exec airflow_scheduler_salud airflow dags trigger bad_health_pipeline
 
-# --- Manual batch ETL (outside Airflow) ---
-podman-compose run --rm etl python -m src.etl_main
+# Tests in a disposable tool container; quality reports must not overwrite final evidence.
+docker compose @dc --profile tools run --rm --build -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
 
-# --- Tests (123; integration tests skip if the DB is unreachable) ---
-pytest -q
+# Simulated arrival of historical DW metrics (one bounded replay).
+docker exec streaming_producer_salud python -m src.streaming.producer --mode replay --interval 0.5 --cycles 1
+# Contract rejection demo and an explicit business alert:
+docker exec streaming_producer_salud python -m scripts.streaming_demo --inject-invalid
+docker exec streaming_producer_salud python -m scripts.streaming_demo --inject-alert
 
-# --- Streaming: demos ---
-podman exec streaming_producer_salud python -m scripts.streaming_demo --listen 5            # raw events
-podman exec streaming_producer_salud python -m scripts.streaming_demo --inject-invalid      # invalid event
-podman exec streaming_producer_salud python -m scripts.streaming_demo --inject-json-invalid # non-JSON payload
-podman exec streaming_producer_salud python -m scripts.streaming_demo --inject-alert        # threshold_alert
-podman exec streaming_producer_salud python -m src.streaming.producer --mode replay --loop  # simulation
+# Consumer interruption: observe OFFLINE after 15 seconds, then recovery.
+docker stop streaming_consumer_salud
+docker start streaming_consumer_salud
 
-# --- Experiment: consumer interruption ---
-podman stop streaming_consumer_salud   # after 15 s the dashboard shows OFFLINE
-podman start streaming_consumer_salud  # back ONLINE within seconds
-
-# --- Inspect DW / streaming state ---
-podman exec -i warehouse_salud psql -U etl_user -d salud_colombia
+# Logs and a safe stop that retains local data:
+docker compose @dc logs --tail 80
+docker compose @dc stop
 ```
 
-**Verification checklist**
+Verification: eight Airflow tasks green; audit `SUCCESS` with 12/12 rules; GX **11/11 + 6/6 + 10/10**;
+seven Superset charts with data; Streamlit metrics update after events and throughput returns to zero
+when idle. Snapshot mode publishes nothing when DW values have not changed; this is intentional.
+Use replay to demonstrate arrivals, clearly marked as simulation. Historical experiment logs must
+be distinguished from the latest successful evidence.
 
-1. <http://localhost:8080> → `reliable_health_pipeline` latest run **green (success)**; gate logs
-   showing `GX 11/11`, `4/4`, `10/10 expectations`.
-2. `audit.etl_run` → latest run `SUCCESS` `dq_rules=12/12`; Test B → `BLOCKED_QUALITY`.
-3. <http://localhost:8088> → dashboard `ods3-salud-colombia` rendering R1–R7.
-4. <http://localhost:8501> → `✅ Consumer active` banner and metrics changing every 3 s.
-5. `pytest -q` → **123 passed**.
-6. Captured evidence available under [`docs/evidence/`](docs/evidence/) (§11).
+For local EDA/development, create a virtual environment and install the declared dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m jupyter lab
+```
+
+Open `notebooks/01_data_validation_cleanup.ipynb` and run all cells. It reads API cache snapshots by
+default. Clean CSV export is opt-in with `EXPORT_CLEAN_DATA=1`; normal EDA does not replace DW exports.
 
 ### 10.4 Credentials
 
 All sensitive material lives in `.env` (**gitignored**); `.env.example` ships placeholders and
-**local-development-only** default values (services bound to `localhost`):
+**local-development-only** default values. The example URLs use `localhost`; Compose publishes host ports, so do not expose these demonstration credentials outside the development machine:
 
 | Service | Default user / password (`.env.example`) |
 |---|---|
@@ -625,12 +689,15 @@ The repository contains **no** API keys, tokens or real credentials (see §12).
 All material lives in [`docs/evidence/`](docs/evidence/) and comes from real executions of the
 system (not code screenshots).
 
+The final integrated checks are recorded in [final_validation.md](docs/evidence/final_validation.md).
+Use its run IDs, timestamps, SQL results and test output to distinguish final evidence from historical experiments.
+
 ### 11.1 Evidence index
 
 | Requirement | Evidence |
 |---|---|
 | Successful Airflow run (8/8 + GX) | [`docs/evidence/gx/`](docs/evidence/gx/) · gate logs in the Airflow run logs · screenshot `airflow_dag_detail.png` |
-| Quality validation (native + GX) | `primary_raw_results.json` (11/11), `api_raw_results.json` (4/4), `prepared_results.json` (10/10) |
+| Quality validation (native + GX) | `primary_raw_results.json` (11/11), `api_raw_results.json` (6/6), `prepared_results.json` (10/10) |
 | Critical failure blocks the DW | Test B `BLOCKED_QUALITY 4/5` in `audit.etl_run` + screenshot `airflow_dags.png` (red run) |
 | DW load (dimensions/facts) | [`docs/evidence/dw/dimensional_dw_state.log`](docs/evidence/dw/dimensional_dw_state.log) (counts, FKs, views, audit) |
 | Batch dashboard | [`docs/evidence/screenshots/superset_dashboard.png`](docs/evidence/screenshots/superset_dashboard.png) |
@@ -659,8 +726,8 @@ WARNING streaming.consumer: INVALID EVENT rejected (1 errors): {{{not-json!!
 INFO    streaming.consumer: event routed to DLQ topic=salud.metric.dlq key=demo:garbage
 ```
 
-Database result: **4** rows in `streaming.invalid_events` (2 `contract_violation`,
-2 `payload is not valid JSON`), `invalid_events_total = 4`, `threshold_alerts_total = 1`, the
+Database result: **2** rows in `streaming.invalid_events` (one missing event identifier and
+one malformed JSON payload), `invalid_events_total = 2`, `threshold_alerts_total = 1`, the
 consumer **stays alive** (`status=running`) and the messages land in the DLQ (2 raw payloads
 verifiable in [`02_dlq_topic_messages.log`](docs/evidence/streaming/02_dlq_topic_messages.log)).
 
@@ -677,9 +744,9 @@ podman start streaming_consumer_salud   # recovery
 
 | Moment | Heartbeat | Dashboard |
 |---|---|---|
-| Normal | `status=running … age=0s` | `✅ Consumer consumer-1 active` |
-| Down (20 s) | `status=stopped … age=20s (>15s = OFFLINE)` | `⛔ Consumer stopped for 29s (>15s)` (red banner) |
-| Recovered | `status=running … age=1s` | `✅` again in ~1 s |
+| Normal | `status=running … age=1s` | `✅ Consumer consumer-1 active` |
+| Down (>15 s) | `status=stopped … age=19s` in the log | OFFLINE red banner |
+| Recovered | `status=running … age=2s` | ONLINE after restarting |
 
 ![Consumer down — OFFLINE banner](docs/evidence/screenshots/streamlit_consumer_offline.png)
 
@@ -687,7 +754,7 @@ podman start streaming_consumer_salud   # recovery
 
 **Observed limitations:** while the consumer is down, events remain in the topic (Kafka retains
 messages), but they are **not processed and do not reach the dashboard** until it returns
-(recovery latency = `start` time + group rejoin ≈ 1 s); the heartbeat is best-effort (if the
+(recovery latency = `start` time + group rejoin, normally a few seconds); the heartbeat is best-effort (if the
 machine dies without SIGTERM, detection happens by staleness > 15 s).
 
 ---
@@ -696,39 +763,34 @@ machine dies without SIGTERM, detection happens by staleness > 15 s).
 
 ### 12.1 Important decisions
 
-1. **Custom Airflow image (`Dockerfile.airflow`).** The official Airflow image does not ship
-   `great_expectations`; `localhost/health-airflow:3.1.8` is built by installing
-   `requirements.txt` **as user `airflow`** (the image includes a guard that aborts pip when run
-   as root; the destination `/home/airflow/.local` is the user-site visible at runtime).
-2. **`protobuf>=5.26.1,<7` in `requirements.txt`.** Streamlit accepts protobuf 7.x but the
-   Google/opentelemetry providers bundled with Airflow require `<7`; the pin prevents breaking
-   the webserver/scheduler.
-3. **Ephemeral Great Expectations, no on-disk artifacts.** Temporary `DataContext` +
-   `ExpectationSuite` + `ValidationDefinition` per suite; results are serialized into
-   `audit.dq_check_result` and the evidence JSONs (traceability without repo clutter).
-4. **Suites separated per DataFrame** (raw without derived columns) so
-   `expect_table_columns_to_match_set` (DQ-01) is not polluted by transformation columns.
-5. **Conservative AND combination (native ∧ GX).** Both engines must agree on the verdict; if
-   GX is missing it degrades to native with documented `available=false` (the DAG never breaks
-   because of the missing package, quality is still guaranteed).
-6. **`kafka-python>=2.2.2,<3.0`.** 3.x renames/removes `kafka.errors.NoBrokersAvailable` used
-   by the retry handling.
-7. **DLQ ensured at consumer startup** (`_ensure_dlq_topic`): Kafka's late auto-create made the
-   first publish lost (bug found during demonstration and fixed — see the
-   `Topic salud.metric.dlq not found` logs from the first iteration). Today the consumer creates
-   the topic if missing and sets an explicit `key_serializer` on the DLQ producer.
-8. **Heartbeat with `clock_timestamp()`** (not `now()`, which freezes inside a transaction): the
-   first dashboard version showed a heartbeat that never aged.
-9. **Replay flagged as a simulation** inside the event itself (`source.simulation=true`), as
-   required by the assignment, plus a `snapshot` mode that **publishes only real changes** (no
-   spam of identical KPIs).
-10. **DAGs with `schedule=None` + `catchup=False`** for deterministic evidence (manual runs with
-    a verifiable `run_id`); orchestration does not depend on system clocks.
-11. **Superset as the BI tool** (open source, native SQL over the DW) and **Streamlit** for real
-    time (same Python stack as the pipeline, simple polling over PostgreSQL).
-12. **Credentials only via environment variables.** `src/config.py` and the bootstrap scripts
-    read `DB_PASSWORD`/`POSTGRES_PASSWORD` from the environment; password literals were removed
-    from the code (the fallback is the `change_me_2026` placeholder from `.env.example`).
+1. **Separate Python environments.** `Dockerfile.airflow` installs `requirements.txt`
+   under the official image's `/home/airflow/constraints.txt`, retains `apache-airflow==3.1.8`
+   and runs `pip check`. Streamlit remains in the general Dockerfile/requirements.txt image.
+   Its protobuf >=5 does not replace Airflow's constrained protobuf 4 / OpenTelemetry stack.
+2. **Startup order and internal DNS.** Compose waits for database/broker health, successful
+   initializers and the Airflow API. Service names are resolved by the container network.
+   Docker Desktop uses the main Compose file; Podman can set `CONTAINER_USERNS_MODE=keep-id`.
+3. **Mandatory Great Expectations.** Native checks and their GX equivalents must both pass;
+   unavailable or incomplete GX execution blocks the gate and is recorded in the quality report.
+4. **Suites per DataFrame.** Raw schema expectations do not include numeric helper columns;
+   DQ-07 explicitly validates both nullability and positive demographic values.
+5. **Immutable batch input.** Per-run snapshots and fingerprints ensure load consumes the
+   prepared batch that passed quality checks. Concurrent full refreshes are prevented.
+6. **Correct KPI grain.** R3 counts distinct `sk_facility` in `dim_facility`; it does not count
+   capacity rows. Regions follow the chosen API's classification.
+7. **Explicit Kafka contract.** Required fields, key, timestamp and UUID are validated; bools
+   do not count as integers and NaN/Infinity are rejected. Invalid events go to PostgreSQL/DLQ.
+8. **Streaming state and retries.** Duplicate event IDs do not inflate counters; alerts do not
+   double-count business deltas; a failed batch is retried without confirming its offsets.
+9. **Window metrics keep aging.** Events/minute is refreshed during idle polling; the dashboard
+   reads the current window. Historical values can be replayed with `simulation=true`.
+10. **Daily orchestration.** `ETL_SCHEDULE` defaults to 06:00 UTC daily, `catchup=False` and
+    `max_active_runs=1`; manual runs and the manual failure experiment remain available.
+11. **Two dashboards.** Superset answers historical questions from the dimensional DW;
+    Streamlit uses `st.fragment(run_every=...)` over streaming tables for operational updates.
+12. **Consolidated dependencies.** All versions are declared in `requirements.txt`; Airflow excludes the GENERAL_ONLY block. Secrets stay in gitignored `.env`.
+
+Official Airflow image-extension guidance: [adding requirements](https://airflow.apache.org/docs/docker-stack/build.html#adding-packages-from-requirements-txt).
 
 ### 12.2 Assumptions
 
@@ -744,8 +806,9 @@ machine dies without SIGTERM, detection happens by staleness > 15 s).
 - **Single-broker Kafka** (`replication_factor=1`), no TLS/auth: acceptable for the demo, not
   for production. Neither the DLQ nor the main topic has extended retention configured.
 - **At-least-once semantics** in the consumer (no Kafka transactions): `event_log` is
-  idempotent by `event_id` (`ON CONFLICT DO NOTHING`), but a redelivery may re-count
-  `events_processed_total`.
+  idempotent by `event_id` (`ON CONFLICT DO NOTHING`) and duplicate IDs do not increase counters.
+  Publishing to Kafka and committing PostgreSQL are still separate operations; distinct event IDs for
+  the same business change require source-level deduplication.
 - **3 s polling** on the real-time dashboard (no websockets/SSE): real dashboard latency ≈ 0–3 s
   on top of processing latency.
 - **The heartbeat is best-effort:** a hard crash (kill -9, network) is detected by staleness
@@ -786,14 +849,14 @@ machine dies without SIGTERM, detection happens by staleness > 15 s).
 │   ├── streaming/*.log            # invalid contracts, DLQ, replay, interruption
 │   └── screenshots/*.png          # Airflow, Superset, Streamlit (online/offline)
 ├── gx/great_expectations.yml      # GX configuration used by gx_backend
-├── notebooks/01_data_validation_cleanup.ipynb   # EDA + cleanup + §9 EDA→DQ
+├── notebooks/01_data_validation_cleanup.ipynb   # EDA + cleanup + §10 EDA→DQ
 ├── scripts/                       # Superset bootstrap, R1–R7 charts, streaming demos
 ├── sql/                           # init.sql (dimensional model), initdb/ (schemas), queries
 ├── src/
 │   ├── extract.py / api_extract.py / transform.py / load.py / etl_main.py / audit.py
 │   ├── quality/                   # rules.py (12 DQ), gx_validator.py (3 gates), gx_backend.py
 │   └── streaming/                 # producer, consumer, contract, store, dashboard
-├── tests/                         # 123 tests (unit/integration/data/quality/streaming)
+├── tests/                         # tests (unit/integration/data/quality/streaming)
 └── visualizations/                # additional visual outputs
 ```
 

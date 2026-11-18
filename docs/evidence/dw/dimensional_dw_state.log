@@ -1,152 +1,115 @@
-=== Data Warehouse dimensional salud_colombia (PostgreSQL 15) ===
-Fecha UTC: 2026-11-09T02:01:13Z
-Esquemas: dimensiones/hechos en 'public', auditoría en 'audit', streaming en 'streaming'
-
---- Esquemas ---
-  esquema  
------------
- audit
- public
- streaming
-(3 rows)
-
---- Tablas y filas ---
-             tabla             | filas 
--------------------------------+-------
- audit.dq_check_result         |    34
- audit.etl_batch_log           |     2
- audit.etl_run                 |     4
- audit.etl_run_step            |    14
- public.dim_capacity_type      |    63
- public.dim_facility           | 10921
- public.dim_geografia          |  2240
- public.dim_regime             |     4
- public.dim_time               |     2
- public.fact_affiliates        |  3369
- public.fact_facility_capacity | 31496
- streaming.consumer_heartbeat  |     1
- streaming.event_log           |    68
- streaming.invalid_events      |     4
- streaming.metric_state        |     7
- streaming.producer_state      |    67
-(16 rows)
-
---- Dimensiones ---
-        dim        | filas 
--------------------+-------
- dim_time          |     2
- dim_geografia     |  2240
- dim_regime        |     4
- dim_facility      | 10921
- dim_capacity_type |    63
-(5 rows)
-
---- Hechos ---
-         hecho          | filas |  total   
-------------------------+-------+----------
- fact_affiliates        |  3369 | 51182238
- fact_facility_capacity | 31496 |   218758
-(2 rows)
-
---- Integridad referencial (FK del esquema estrella) ---
-         tabla          |         ref         
-------------------------+---------------------
- dim_capacity_type      | audit.etl_batch_log
- dim_facility           | dim_geografia
- dim_facility           | audit.etl_batch_log
- dim_geografia          | audit.etl_batch_log
- dim_regime             | audit.etl_batch_log
- dim_time               | audit.etl_batch_log
- fact_affiliates        | dim_geografia
- fact_affiliates        | dim_time
- fact_affiliates        | dim_regime
- fact_affiliates        | audit.etl_batch_log
- fact_facility_capacity | dim_time
- fact_facility_capacity | dim_facility
- fact_facility_capacity | dim_capacity_type
- fact_facility_capacity | dim_geografia
- fact_facility_capacity | audit.etl_batch_log
-(15 rows)
-
---- Muestra: hecho de afiliados con joins dimensionales ---
- periodo_codigo |   departamento   |   regimen    | numero_afiliados 
-----------------+------------------+--------------+------------------
- 2022-Q2        | BOGOTA D.C.      | CONTRIBUTORY |          6410877
- 2022-Q2        | ANTIOQUIA        | CONTRIBUTORY |          2165129
- 2022-Q2        | VALLE DEL CAUCA  | CONTRIBUTORY |          1633443
- 2022-Q2        | BOGOTA D.C.      | SUBSIDIZED   |          1572561
- 2022-Q2        | SIN DEPARTAMENTO | SPECIAL      |          1232150
- 2022-Q2        | ATLANTICO        | CONTRIBUTORY |           845768
+Actual execution, UTC 2026-11-18T06:52:34.367014+00:00
+ run_id |                 run_key                  |          dag_id          |     status      | dq_rules_passed | dq_rules_total
+--------+------------------------------------------+--------------------------+-----------------+-----------------+----------------
+     30 | final_capacity_fix_20261118              | reliable_health_pipeline | SUCCESS         |              12 |             12
+     23 | final_validation_good_20261118           | reliable_health_pipeline | SUCCESS         |              12 |             12
+     19 | final_validation_bad_20261118            | bad_health_pipeline      | BLOCKED_QUALITY |               4 |              5
+     15 | scheduled__2026-11-18T06:00:00+00:00     | reliable_health_pipeline | SUCCESS         |              12 |             12
+      8 | scheduled__2026-11-17T06:00:00+00:00     | reliable_health_pipeline | SUCCESS         |              12 |             12
+      1 | manual__2026-11-18T01:27:47.482842+00:00 | reliable_health_pipeline | SUCCESS         |              12 |             12
 (6 rows)
 
---- Vistas analíticas (R6/R7 para Superset) ---
-           vista           | filas 
----------------------------+-------
- v_r6_demographic_coverage |    33
- v_r7_territorial_capacity |    33
- v_facility_summary        | 31496
-(3 rows)
+         tabla          | count
+------------------------+-------
+ dim_time               |     2
+ dim_geografia          |  2240
+ dim_regime             |     4
+ dim_facility           | 10921
+ dim_capacity_type      |    63
+ fact_affiliates        |  3369
+ fact_facility_capacity | 31496
+(7 rows)
 
---- Vista R6: cobertura demográfica por departamento ---
- departamento | region | poblacion_oficial_api | total_afiliados_sgsss | cobertura_afiliacion_pct |      categoria_cobertura       
---------------+--------+-----------------------+-----------------------+--------------------------+--------------------------------
- RISARALDA    | Andina |                977829 |               1047337 |                   107.11 | Alta Concentración / Movilidad
- CUNDINAMARCA | Andina |               2473634 |               2609762 |                   105.50 | Alta Concentración / Movilidad
- HUILA        | Andina |               1140932 |               1173970 |                   102.90 | Meta Universal Adecuada
- BOLIVAR      | Caribe |               2236603 |               2284134 |                   102.13 | Meta Universal Adecuada
- QUINDIO      | Andina |                569569 |                574390 |                   100.85 | Meta Universal Adecuada
-(5 rows)
-
---- Vista R7: capacidad territorial por departamento ---
- departamento |  region  | total_ips_habilitadas | total_camas | camas_por_1000_hab |  nivel_alerta_hospitalaria  
---------------+----------+-----------------------+-------------+--------------------+-----------------------------
- CESAR        | Caribe   |                   357 |        3798 |               2.83 | Capacidad Hospitalaria Alta
- AMAZONAS     | Amazonia |                    23 |         225 |               2.74 | Capacidad Hospitalaria Alta
- ATLANTICO    | Caribe   |                   737 |        7577 |               2.70 | Capacidad Hospitalaria Alta
- SUCRE        | Caribe   |                   298 |        2569 |               2.64 | Capacidad Hospitalaria Alta
- MAGDALENA    | Caribe   |                   360 |        3690 |               2.52 | Capacidad Hospitalaria Alta
-(5 rows)
-
---- Auditoría: etl_run (ejecuciones) ---
- run_id |                 run_key                  |          dag_id          | run_type |     status      | stage_reached |       started       | duration_seconds |  dq   
---------+------------------------------------------+--------------------------+----------+-----------------+---------------+---------------------+------------------+-------
-     16 | manual__2026-11-09T01:38:22.905052+00:00 | bad_health_pipeline      | AIRFLOW  | BLOCKED_QUALITY | VALIDATE      | 2026-11-09 01:38:32 |            0.218 | 4/5
-      9 | manual__2026-11-09T01:36:13.429328+00:00 | reliable_health_pipeline | AIRFLOW  | SUCCESS         | VERIFY        | 2026-11-09 01:36:24 |           25.838 | 12/12
-      8 | manual__2026-11-08T06:37:31.287055+00:00 | bad_health_pipeline      | AIRFLOW  | BLOCKED_QUALITY | VALIDATE      | 2026-11-08 06:37:33 |            0.043 | 4/5
-      1 | manual__2026-11-08T06:35:32.642960+00:00 | reliable_health_pipeline | AIRFLOW  | SUCCESS         | VERIFY        | 2026-11-08 06:35:37 |           10.215 | 12/12
-(4 rows)
-
---- Auditoría: etl_run_step de la última ejecución ---
-  phase   |     step_name      | status | rows_in | rows_out | segundos 
-----------+--------------------+--------+---------+----------+----------
- VALIDATE | gate_1_primary_raw | FAILED |         |          |     0.00
+ affiliates
+------------
+   51182238
 (1 row)
 
---- Auditoría: dq_check_result (reglas de la última ejecución) ---
- rule_id |          gate          | severity | status |                                                                                             observed_value                                                                                              
----------+------------------------+----------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- DQ-01   | primary_raw_validation | CRITICAL | PASS   | {"missing_columns": [], "total_columns": 8, "gx": {"expectations": 1, "failed": 0, "failed_expectations": []}}
- DQ-02   | primary_raw_validation | CRITICAL | FAIL   | {"invalid_regimes": ["INVALID_Z"], "found_regimes": ["E", "C", "I", "INVALID_Z", "S"], "gx": {"expectations": 1, "failed": 1, "failed_expectations": ["expect_column_values_to_be_in_set(regime_id)"]}}
- DQ-03   | primary_raw_validation | CRITICAL | PASS   | {"negative_count": 0, "null_count": 0, "gx": {"expectations": 2, "failed": 0, "failed_expectations": []}}
- DQ-04   | primary_raw_validation | CRITICAL | PASS   | {"missing_columns": [], "gx": {"expectations": 5, "failed": 0, "failed_expectations": []}}
- DQ-05   | primary_raw_validation | CRITICAL | PASS   | {"negative_capacity_count": 0, "gx": {"expectations": 2, "failed": 0, "failed_expectations": []}}
-(5 rows)
+ capacity
+----------
+   219758
+(1 row)
 
---- Conteo global DQ por estado ---
- rule_id | status | count 
----------+--------+-------
- DQ-01   | PASS   |     4
- DQ-02   | FAIL   |     2
- DQ-02   | PASS   |     2
- DQ-03   | PASS   |     4
- DQ-04   | PASS   |     4
- DQ-05   | PASS   |     4
- DQ-06   | PASS   |     2
- DQ-07   | PASS   |     2
- DQ-08   | PASS   |     2
- DQ-09   | PASS   |     2
- DQ-10   | PASS   |     2
- DQ-11   | PASS   |     2
- DQ-12   | PASS   |     2
-(13 rows)
+ nature  | unique_facilities
+---------+-------------------
+ Mixta   |                15
+ Privada |              9632
+ Pública |              1274
+(3 rows)
 
+    departamento    |  region   | region_api
+--------------------+-----------+------------
+ GUAINIA            | Amazonia  | Amazonía
+ NORTE DE SANTANDER | Andina    | Andina
+ VICHADA            | Orinoquia | Orinoquía
+(3 rows)
+
+           gate           | status | count
+--------------------------+--------+-------
+ api_raw_validation       | PASS   |     2
+ prepared_data_validation | PASS   |     5
+ primary_raw_validation   | PASS   |     5
+(3 rows)
+
+         tabla          |                             pg_get_constraintdef
+------------------------+-------------------------------------------------------------------------------
+ dim_time               | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ dim_geografia          | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ dim_regime             | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ dim_facility           | FOREIGN KEY (sk_geografia) REFERENCES dim_geografia(sk_geografia)
+ dim_facility           | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ dim_capacity_type      | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ fact_affiliates        | FOREIGN KEY (sk_time) REFERENCES dim_time(sk_time)
+ fact_affiliates        | FOREIGN KEY (sk_geografia) REFERENCES dim_geografia(sk_geografia)
+ fact_affiliates        | FOREIGN KEY (sk_regime) REFERENCES dim_regime(sk_regime)
+ fact_affiliates        | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+ fact_facility_capacity | FOREIGN KEY (sk_time) REFERENCES dim_time(sk_time)
+ fact_facility_capacity | FOREIGN KEY (sk_facility) REFERENCES dim_facility(sk_facility)
+ fact_facility_capacity | FOREIGN KEY (sk_capacity_type) REFERENCES dim_capacity_type(sk_capacity_type)
+ fact_facility_capacity | FOREIGN KEY (sk_geografia) REFERENCES dim_geografia(sk_geografia)
+ fact_facility_capacity | FOREIGN KEY (batch_id) REFERENCES audit.etl_batch_log(batch_id)
+(15 rows)
+
+ batches_for_failed_run
+------------------------
+                      0
+(1 row)
+
+          dag_id          |                  run_id                  |  state  |          start_date           |           end_date
+--------------------------+------------------------------------------+---------+-------------------------------+-------------------------------
+ reliable_health_pipeline | final_capacity_fix_20261118              | success | 2026-11-18 06:38:53.151161+00 | 2026-11-18 06:40:33.050462+00
+ reliable_health_pipeline | final_validation_good_20261118           | success | 2026-11-18 06:22:26.567746+00 | 2026-11-18 06:23:52.184923+00
+ bad_health_pipeline      | final_validation_bad_20261118            | failed  | 2026-11-18 06:20:49.814113+00 | 2026-11-18 06:21:29.06975+00
+ reliable_health_pipeline | scheduled__2026-11-18T06:00:00+00:00     | success | 2026-11-18 06:19:35.952696+00 | 2026-11-18 06:22:25.45936+00
+ reliable_health_pipeline | scheduled__2026-11-17T06:00:00+00:00     | success | 2026-11-18 03:58:29.926144+00 | 2026-11-18 04:00:51.129823+00
+ reliable_health_pipeline | manual__2026-11-18T01:27:47.482842+00:00 | success | 2026-11-18 01:27:47.740047+00 | 2026-11-18 01:59:21.003159+00
+(6 rows)
+
+         task_id         |  state
+-------------------------+---------
+ extract_api             | success
+ extract_primary         | success
+ load_dimensional_dw     | success
+ transform_and_integrate | success
+ validate_api_raw        | success
+ validate_prepared       | success
+ validate_primary_raw    | success
+ verify_dw_and_kpis      | success
+(8 rows)
+
+         task_id         |      state
+-------------------------+-----------------
+ extract_api             | success
+ extract_primary         | success
+ load_dimensional_dw     | upstream_failed
+ transform_and_integrate | upstream_failed
+ validate_api_raw        | success
+ validate_prepared       | upstream_failed
+ validate_primary_raw    | failed
+ verify_dw_and_kpis      | upstream_failed
+(8 rows)
+
+          dag_id          | is_paused
+--------------------------+-----------
+ reliable_health_pipeline | f
+(1 row)

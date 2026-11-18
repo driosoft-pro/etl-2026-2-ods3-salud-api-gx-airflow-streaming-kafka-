@@ -266,7 +266,12 @@ def fetch_metrics(conn) -> List[Dict[str, Any]]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT metric_name, metric_value, previous_value, delta, unit,
+            SELECT metric_name,
+                   CASE WHEN metric_name = 'events_per_minute' THEN
+                       (SELECT COUNT(*) FROM streaming.event_log
+                        WHERE received_at > clock_timestamp() - interval '1 minute')
+                   ELSE metric_value END AS metric_value,
+                   previous_value, delta, unit,
                    event_count, invalid_count, last_event_at, updated_at
             FROM streaming.metric_state
             ORDER BY metric_name
@@ -332,9 +337,10 @@ def fetch_metric_series(conn, metric_name: str, limit: int = 60) -> List[Dict[st
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT received_at, value, delta, event_type, simulation
+            SELECT received_at, value, delta, event_type, simulation, event_key,
+                   COALESCE(payload->'dimension'->>'department', event_key) AS department
             FROM streaming.event_log
-            WHERE metric_name = %s
+            WHERE metric_name = %s AND event_type = 'metric_update'
             ORDER BY received_at DESC
             LIMIT %s
             """,

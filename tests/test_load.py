@@ -1,5 +1,5 @@
 import pytest
-import pandas as pd
+import psycopg2
 import os
 import sys
 
@@ -51,110 +51,79 @@ class TestAuditModule:
         assert audit.STATUS_BLOCKED == 'BLOCKED_QUALITY'
 
 
+@pytest.fixture
+def db_connection():
+    """Only an unavailable connection skips; SQL/schema/assertion failures fail."""
+    from src.config import DB_CONFIG
+    try:
+        connection = psycopg2.connect(**DB_CONFIG)
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"PostgreSQL unavailable: {exc}")
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 @pytest.mark.integration
 class TestAuditTables:
 
-    def test_audit_tables_exist(self):
-        try:
-            import psycopg2
-            from src.config import DB_CONFIG
-            conn = psycopg2.connect(**DB_CONFIG)
-            cursor = conn.cursor()
+    def test_audit_tables_exist(self, db_connection):
+        with db_connection.cursor() as cursor:
             cursor.execute("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'audit'
             """)
             tables = {row[0] for row in cursor.fetchall()}
-            conn.close()
-            expected = {'etl_run', 'etl_run_step', 'dq_check_result', 'etl_batch_log'}
-            missing = expected - tables
-            assert len(missing) == 0, f"Missing audit tables: {missing}"
-        except Exception as e:
-            pytest.skip(f"Could not verify audit tables: {e}")
+        expected = {'etl_run', 'etl_run_step', 'dq_check_result', 'etl_batch_log'}
+        missing = expected - tables
+        assert not missing, f"Missing audit tables: {missing}"
 
-    def test_batch_id_column_in_truth_tables(self):
+    def test_batch_id_column_in_truth_tables(self, db_connection):
         """Las 5 dimensiones y 2 hechos deben tener la columna batch_id."""
-        try:
-            import psycopg2
-            from src.config import DB_CONFIG
-            conn = psycopg2.connect(**DB_CONFIG)
-            cursor = conn.cursor()
+        with db_connection.cursor() as cursor:
             cursor.execute("""
                 SELECT table_name
                 FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND column_name = 'batch_id'
+                WHERE table_schema = 'public' AND column_name = 'batch_id'
             """)
             tables = {row[0] for row in cursor.fetchall()}
-            conn.close()
-            expected = {
-                'dim_time', 'dim_geografia', 'dim_regime', 'dim_facility',
-                'dim_capacity_type', 'fact_affiliates', 'fact_facility_capacity',
-            }
-            missing = expected - tables
-            assert len(missing) == 0, f"Tables missing batch_id column: {missing}"
-        except Exception as e:
-            pytest.skip(f"Could not verify batch_id columns: {e}")
+        expected = {
+            'dim_time', 'dim_geografia', 'dim_regime', 'dim_facility',
+            'dim_capacity_type', 'fact_affiliates', 'fact_facility_capacity',
+        }
+        missing = expected - tables
+        assert not missing, f"Tables missing batch_id column: {missing}"
 
-    def test_airflow_metadata_not_in_dw(self):
+    def test_airflow_metadata_not_in_dw(self, db_connection):
         """La base del DW NO debe contener tablas de metadatos de Airflow."""
-        try:
-            import psycopg2
-            from src.config import DB_CONFIG
-            conn = psycopg2.connect(**DB_CONFIG)
-            cursor = conn.cursor()
+        with db_connection.cursor() as cursor:
             cursor.execute("""
-                SELECT table_name
-                FROM information_schema.tables
+                SELECT table_name FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_name IN ('dag_run', 'task_instance', 'xcom', 'job')
             """)
             leaked = {row[0] for row in cursor.fetchall()}
-            conn.close()
-            assert len(leaked) == 0, f"Airflow metadata leaked into DW database: {leaked}"
-        except Exception as e:
-            pytest.skip(f"Could not verify schema separation: {e}")
+        assert not leaked, f"Airflow metadata leaked into DW database: {leaked}"
 
 
 @pytest.mark.integration
 class TestDBConnection:
-    
-    def test_connection_possible(self):
-        try:
-            import psycopg2
-            from src.config import DB_CONFIG
-            conn = psycopg2.connect(**DB_CONFIG)
-            conn.close()
-            connection_success = True
-        except Exception as e:
-            pytest.skip(f"Database service not running on localhost:5432 ({e})")
-            return
-        assert connection_success, "Could not connect to database"
-    
-    def test_tables_exist(self):
-        try:
-            import psycopg2
-            from src.config import DB_CONFIG
-            conn = psycopg2.connect(**DB_CONFIG)
-            cursor = conn.cursor()
-            
+
+    def test_connection_possible(self, db_connection):
+        assert not db_connection.closed
+
+    def test_tables_exist(self, db_connection):
+        with db_connection.cursor() as cursor:
             cursor.execute("""
-                SELECT table_name 
-                FROM information_schema.tables 
+                SELECT table_name FROM information_schema.tables
                 WHERE table_schema = 'public'
             """)
             tables = {row[0] for row in cursor.fetchall()}
-            conn.close()
-            
-            expected_tables = {
-                'dim_time', 'dim_geografia',
-                'dim_regime', 'dim_facility', 'dim_capacity_type',
-                'fact_affiliates', 'fact_facility_capacity'
-            }
-            
-            missing = expected_tables - tables
-            assert len(missing) == 0, f"Missing tables: {missing}"
-            
-        except Exception as e:
-            pytest.skip(f"Could not verify tables: {e}")
+        expected = {
+            'dim_time', 'dim_geografia', 'dim_regime', 'dim_facility',
+            'dim_capacity_type', 'fact_affiliates', 'fact_facility_capacity',
+        }
+        missing = expected - tables
+        assert not missing, f"Missing tables: {missing}"

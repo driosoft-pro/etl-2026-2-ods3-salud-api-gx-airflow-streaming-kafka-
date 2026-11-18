@@ -1,14 +1,14 @@
 {
   "gate": "primary_raw_validation",
-  "executed_at": "2026-11-09T02:15:23.714617+00:00",
+  "executed_at": "2026-11-18T18:25:55.703401+00:00",
   "total_rules": 5,
-  "passed_rules": 4,
-  "failed_rules": 1,
-  "has_critical_failure": true,
+  "passed_rules": 5,
+  "failed_rules": 0,
+  "has_critical_failure": false,
   "gx": {
     "available": true,
     "library": "great_expectations",
-    "version": "1.24.1",
+    "version": "1.25.0",
     "mode": "ephemeral",
     "suites_requested": 3,
     "suites_run": 3,
@@ -234,7 +234,7 @@
               "result_format": "BASIC",
               "catch_exceptions": true,
               "severity": "critical",
-              "column": "installed_capacity",
+              "column": "installed_capacity_num",
               "mostly": 1
             },
             "success": true,
@@ -325,17 +325,14 @@
       "rule_id": "DQ-02",
       "description": "Healthcare regime code must belong to allowed set {S, C, E, I}",
       "severity": "CRITICAL",
-      "success": false,
+      "success": true,
       "details": {
-        "invalid_regimes": [
-          "INVALID_Z"
-        ],
+        "invalid_regimes": [],
         "found_regimes": [
           "S",
-          "I",
           "E",
           "C",
-          "INVALID_Z"
+          "I"
         ],
         "gx": {
           "expectations": 1,
@@ -535,6 +532,7 @@
       "success": true,
       "details": {
         "negative_capacity_count": 0,
+        "invalid_numeric_count": 0,
         "gx": {
           "expectations": 2,
           "failed": 0,
@@ -549,7 +547,7 @@
             "result_format": "BASIC",
             "catch_exceptions": true,
             "severity": "critical",
-            "column": "installed_capacity",
+            "column": "installed_capacity_num",
             "mostly": 1
           },
           "success": true,

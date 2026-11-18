@@ -15,6 +15,13 @@ from src.quality import (
     CriticalQualityError, RULES
 )
 
+
+@pytest.fixture(autouse=True)
+def isolated_quality_evidence(tmp_path, monkeypatch):
+    """Regression tests must never replace the delivery's real GX evidence."""
+    import src.quality.gx_validator as validator
+    monkeypatch.setattr(validator, "EVIDENCE_DIR", str(tmp_path / "gx"))
+
 @pytest.fixture(scope="module")
 def primary_data():
     return extract_all()
@@ -50,6 +57,22 @@ def prepared_environment(primary_data, api_data):
 
 class TestQualityGates:
 
+    @pytest.mark.parametrize("invalid", [None, "not-a-number", "NaN", "inf", "-inf", -1, "1,5"])
+    def test_installed_capacity_must_be_finite_numeric(self, primary_data, invalid):
+        facilities = primary_data['facilities'].copy()
+        facilities.loc[facilities.index[0], 'installed_capacity'] = invalid
+        with pytest.raises(CriticalQualityError) as error:
+            validate_primary_raw(primary_data['affiliates'], facilities)
+        assert any(e['rule_id'] == 'DQ-05' and not e['success'] for e in error.value.details['evaluations'])
+
+    def test_capacity_thousands_separator_is_preserved(self, primary_data):
+        facilities = primary_data['facilities'].copy()
+        facilities.loc[facilities.index[0], 'installed_capacity'] = '1,000'
+        result = validate_primary_raw(primary_data['affiliates'], facilities)
+        assert result['has_critical_failure'] is False
+        cleaned = clean_facilities(facilities)
+        assert cleaned.loc[facilities.index[0], 'installed_capacity'] == 1000
+
     def test_rules_catalog_completeness(self):
         assert len(RULES) >= 12
         for r_id, rule in RULES.items():
@@ -77,6 +100,52 @@ class TestQualityGates:
         with pytest.raises(CriticalQualityError) as exc_info:
             validate_api_raw(api_data['departments'], api_data['regions'], simulate_failure="DQ-07")
         assert "DQ-07" in str(exc_info.value)
+
+    @pytest.mark.parametrize("column", ["population", "surface"])
+    @pytest.mark.parametrize("value", [None, "not-a-number", 0, -1, float("nan"), float("inf"), -float("inf")])
+    def test_api_demographics_reject_missing_invalid_or_non_positive_values(self, api_data, column, value):
+        departments = api_data['departments'].copy()
+        departments[column] = departments[column].astype(object)
+        departments.loc[departments.index[0], column] = value
+        with pytest.raises(CriticalQualityError) as exc_info:
+            validate_api_raw(departments, api_data['regions'])
+        assert exc_info.value.rule_id == "DQ-07"
+        rule = next(r for r in exc_info.value.details["evaluations"] if r["rule_id"] == "DQ-07")
+        assert rule["details"][f"invalid_{column}_count"] == 1
+
+    def test_missing_gx_blocks_the_gate_instead_of_using_native_success(self, api_data, monkeypatch):
+        import src.quality.gx_backend as backend
+        monkeypatch.setattr(backend, "GX_AVAILABLE", False)
+        monkeypatch.setattr(backend, "GX_IMPORT_ERROR", "test: library unavailable")
+        with pytest.raises(CriticalQualityError) as exc_info:
+            validate_api_raw(api_data['departments'], api_data['regions'])
+        gx = exc_info.value.details["gx"]
+        assert gx["available"] is False
+        assert gx["suites_run"] == 0
+        assert gx["expectations_failed"] == gx["expectations_total"] == 6
+        assert "library unavailable" in gx["blocked_reason"]
+
+    def test_partial_gx_execution_cannot_report_an_available_success(self, primary_data, monkeypatch):
+        import src.quality.gx_backend as backend
+        real_get_context = backend.gx.get_context
+        calls = 0
+
+        def fail_second_suite(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("test: suite backend failed")
+            return real_get_context(*args, **kwargs)
+
+        monkeypatch.setattr(backend.gx, "get_context", fail_second_suite)
+        with pytest.raises(CriticalQualityError) as exc_info:
+            validate_primary_raw(primary_data['affiliates'], primary_data['facilities'])
+        gx = exc_info.value.details["gx"]
+        assert gx["available"] is False
+        assert gx["suites_run"] == 2
+        assert gx["suites_requested"] == 3
+        assert gx["expectations_failed"] == 2
+        assert "suite backend failed" in gx["blocked_reason"]
 
     def test_gate3_prepared_data_passes(self, prepared_environment):
         dims, facts = prepared_environment

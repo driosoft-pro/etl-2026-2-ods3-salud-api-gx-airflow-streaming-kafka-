@@ -1,6 +1,6 @@
 {
   "gate": "prepared_data_validation",
-  "executed_at": "2026-11-09T02:15:26.491293+00:00",
+  "executed_at": "2026-11-18T18:26:18.157244+00:00",
   "total_rules": 5,
   "passed_rules": 5,
   "failed_rules": 0,
@@ -8,12 +8,12 @@
   "gx": {
     "available": true,
     "library": "great_expectations",
-    "version": "1.24.1",
+    "version": "1.25.0",
     "mode": "ephemeral",
     "suites_requested": 2,
     "suites_run": 2,
-    "expectations_total": 9,
-    "expectations_passed": 9,
+    "expectations_total": 10,
+    "expectations_passed": 10,
     "expectations_failed": 0,
     "failed_rules": [],
     "suites": [
@@ -21,8 +21,8 @@
         "suite": "prepared_fact_affiliates",
         "rows": 3369,
         "available": true,
-        "expectations_total": 4,
-        "expectations_passed": 4,
+        "expectations_total": 5,
+        "expectations_passed": 5,
         "expectations_failed": 0,
         "expectations": [
           {
@@ -124,6 +124,24 @@
               "unexpected_percent": 0.0,
               "unexpected_percent_total": 0.0,
               "missing_count": 0
+            }
+          },
+          {
+            "rule_id": "DQ-12",
+            "expectation": "expect_column_sum_to_be_between",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": false,
+              "severity": "critical",
+              "column": "numero_afiliados",
+              "min_value": 51177119.7762,
+              "max_value": 51187356.2238,
+              "strict_min": false,
+              "strict_max": false
+            },
+            "success": true,
+            "observed": {
+              "observed_value": "51182238"
             }
           }
         ]
@@ -599,8 +617,36 @@
       "success": true,
       "details": {
         "fact_total": 51182238,
-        "note": "No raw total provided, bypassed"
-      }
+        "raw_total": 51182238,
+        "absolute_diff": 0,
+        "diff_pct": 0.0,
+        "tolerance_threshold": 5118.223800000001,
+        "gx": {
+          "expectations": 1,
+          "failed": 0,
+          "failed_expectations": []
+        }
+      },
+      "gx": [
+        {
+          "rule_id": "DQ-12",
+          "expectation": "expect_column_sum_to_be_between",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": false,
+            "severity": "critical",
+            "column": "numero_afiliados",
+            "min_value": 51177119.7762,
+            "max_value": 51187356.2238,
+            "strict_min": false,
+            "strict_max": false
+          },
+          "success": true,
+          "observed": {
+            "observed_value": "51182238"
+          }
+        }
+      ]
     }
   ]
 }

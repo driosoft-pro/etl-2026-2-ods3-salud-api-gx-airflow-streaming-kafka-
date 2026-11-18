@@ -1,19 +1,19 @@
 {
   "gate": "api_raw_validation",
-  "executed_at": "2026-11-09T02:15:23.788672+00:00",
+  "executed_at": "2026-11-18T18:25:55.403862+00:00",
   "total_rules": 2,
-  "passed_rules": 1,
-  "failed_rules": 1,
-  "has_critical_failure": true,
+  "passed_rules": 2,
+  "failed_rules": 0,
+  "has_critical_failure": false,
   "gx": {
     "available": true,
     "library": "great_expectations",
-    "version": "1.24.1",
+    "version": "1.25.0",
     "mode": "ephemeral",
     "suites_requested": 1,
     "suites_run": 1,
-    "expectations_total": 4,
-    "expectations_passed": 4,
+    "expectations_total": 6,
+    "expectations_passed": 6,
     "expectations_failed": 0,
     "failed_rules": [],
     "suites": [
@@ -21,8 +21,8 @@
         "suite": "api_raw_departments",
         "rows": 33,
         "available": true,
-        "expectations_total": 4,
-        "expectations_passed": 4,
+        "expectations_total": 6,
+        "expectations_passed": 6,
         "expectations_failed": 0,
         "expectations": [
           {
@@ -50,6 +50,40 @@
               "catch_exceptions": true,
               "severity": "critical",
               "column": "api_id",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-07",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "population_num",
+              "mostly": 1
+            },
+            "success": true,
+            "observed": {
+              "element_count": 33,
+              "unexpected_count": 0,
+              "unexpected_percent": 0.0
+            }
+          },
+          {
+            "rule_id": "DQ-07",
+            "expectation": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "result_format": "BASIC",
+              "catch_exceptions": true,
+              "severity": "critical",
+              "column": "surface_num",
               "mostly": 1
             },
             "success": true,
@@ -164,17 +198,51 @@
       "rule_id": "DQ-07",
       "description": "Official population and surface from API must be positive (> 0)",
       "severity": "CRITICAL",
-      "success": false,
+      "success": true,
       "details": {
-        "invalid_population_count": 5,
-        "invalid_surface_count": 3,
+        "invalid_population_count": 0,
+        "invalid_surface_count": 0,
         "gx": {
-          "expectations": 2,
+          "expectations": 4,
           "failed": 0,
           "failed_expectations": []
         }
       },
       "gx": [
+        {
+          "rule_id": "DQ-07",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "population_num",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
+        {
+          "rule_id": "DQ-07",
+          "expectation": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "result_format": "BASIC",
+            "catch_exceptions": true,
+            "severity": "critical",
+            "column": "surface_num",
+            "mostly": 1
+          },
+          "success": true,
+          "observed": {
+            "element_count": 33,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0
+          }
+        },
         {
           "rule_id": "DQ-07",
           "expectation": "expect_column_values_to_be_between",

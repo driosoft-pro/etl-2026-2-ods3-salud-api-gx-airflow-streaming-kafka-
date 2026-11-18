@@ -19,6 +19,7 @@ venv/
 # --- PostgreSQL data volume (bind mount) ---
 .pgdata/
 .kafka-data/
+data/batches/
 
 # --- Logs ---
 logs/
