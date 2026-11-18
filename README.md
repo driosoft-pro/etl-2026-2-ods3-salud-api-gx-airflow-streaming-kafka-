@@ -546,11 +546,10 @@ and shows:
 
 ### 10.1 Requirements
 
-- Git and Docker Desktop with Docker Compose v2, using Linux containers. Podman with a current
-  Compose provider is supported through the base Compose file.
-- Approximately 4 GB free RAM for this demonstration stack; leave additional memory for the browser.
-- Python 3.12 is optional for host-side development. The normal Docker path runs the scripts inside containers.
-- The two CSVs and API cache are included. No paid API or token is required.
+- **Git**; **Python 3.12** (optional for host-side development: [Nix](flake.nix) dev shell with `uv`, podman, psql and chromium — the normal Docker path runs the scripts inside containers);
+- **Podman ≥ 4 + `podman-compose`** (Linux; any current Compose provider is supported through the base Compose file) or **Docker Desktop** with WSL2 backend + `docker compose` using Linux containers (Windows);
+- ~4 GB free RAM for the 11 containers, plus additional memory for the browser;
+- No paid external dependencies and no paid API or token: the only two sources are CSVs included in the repo and the public API `api-colombia.com` (with an included backup cache in `data/raw/`).
 
 ### 10.2 Startup (Docker Desktop / PowerShell)
 
@@ -611,6 +610,10 @@ only `postgrest`; never change the container port or database address to work ar
 
 For Podman on Linux, create `.env` and the password JSON, then use `podman-compose` with the base file:
 
+Choose the setup matching your operating system and container engine:
+
+#### Option A: Linux / Podman (rootless bash)
+
 ```bash
 cp .env.example .env
 printf '{"airflow":"airflow"}' > config/simple_auth_manager_passwords.json
@@ -619,6 +622,97 @@ podman-compose up -d --build
 podman-compose --profile bootstrap run --rm superset-bootstrap
 podman exec superset_salud /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
 ```
+
+#### Option B: Windows / Docker Desktop (PowerShell)
+
+Step-by-step reproducible guide tested and verified on Windows 11 with PowerShell and Docker Desktop:
+
+##### Step 1: Environment setup and Airflow credentials
+
+```powershell
+# 1. Create and activate local virtual environment in Windows PowerShell
+py -3.12 -m venv venv
+venv\Scripts\Activate.ps1
+
+# 2. Copy environment template (.env is NEVER committed to Git)
+Copy-Item .env.example .env
+
+# 3. Generate credentials for Airflow 3 (SimpleAuthManager)
+# NOTE: PowerShell does not have 'printf' and 'print' must not be used.
+# Use Out-File with -Encoding ascii to prevent UTF-16 BOM encoding that breaks the JSON parser:
+'{"airflow": "airflow"}' | Out-File -FilePath config/simple_auth_manager_passwords.json -Encoding ascii
+```
+
+##### Step 2: Free port 5432 on Windows
+
+> [!WARNING]
+> **Port 5432 Conflict (Native PostgreSQL service):** If you have a native PostgreSQL service running on Windows (e.g., `postgresql-x64-18`), **you must stop it** before starting Docker. Pipeline services (`streaming-producer`, `streaming-consumer`, etc.) resolve the `postgres` host to `host-gateway`, so if port `5432` on the host is occupied by a local Windows PostgreSQL instance, they will collide and authentication will fail.
+>
+> Run in PowerShell as Administrator if the service is active:
+> ```powershell
+> Stop-Service postgresql-x64-18 -ErrorAction SilentlyContinue
+> ```
+
+##### Step 3: Start infrastructure and initialize Airflow 3
+
+```powershell
+# 1. Build images and start all 11 services in the background
+docker compose up -d --build
+
+# 2. Verify containers are healthy (wait until postgres and kafka report 'healthy')
+docker ps
+
+# 3. Initialize Airflow 3 metadata and migrations (ensures execution schemas exist)
+docker exec -it airflow_scheduler_salud airflow db migrate
+
+# 4. Restart Airflow services to synchronize Scheduler, Webserver, and Dag Processor
+docker restart airflow_webserver_salud airflow_scheduler_salud airflow_dag_processor_salud
+
+# 5. Unpause and trigger the reliable DAG (Test A: Full successful run across all 8 tasks)
+docker exec -it airflow_scheduler_salud airflow dags unpause reliable_health_pipeline
+docker exec -it airflow_scheduler_salud airflow dags trigger reliable_health_pipeline
+```
+
+##### Step 4: Initialize Apache Superset and link charts to the Dashboard
+
+```powershell
+# 1. Register DW connection and R1–R7 analytical datasets in Superset (bootstrap profile)
+docker compose --profile bootstrap run --rm superset-bootstrap
+
+# 2. Generate all 7 R1–R7 charts and configure the Dashboard layout grid
+docker exec -it superset_salud python /app/scripts/superset_charts_bootstrap.py
+
+# 3. Formally link chart slices to Dashboard 1 in the Superset metadata database:
+docker exec -it superset_salud python -c "from superset.app import create_app; app = create_app(); app.app_context().push(); from superset import db; from superset.models.dashboard import Dashboard; from superset.models.slice import Slice; d = db.session.query(Dashboard).get(1); d.slices = db.session.query(Slice).all(); db.session.commit(); print('Slices vinculados:', len(d.slices))"
+```
+
+##### Step 5: Activate Streaming simulation (Kafka) for the presentation
+
+```powershell
+# Start continuous emission of DW-derived events in replay mode (0.5s interval loop)
+docker exec -d streaming_producer_salud python -m src.streaming.producer --mode replay --interval 0.5 --loop
+```
+
+> [!IMPORTANT]
+> **EXECUTION RULE FOR KAFKA SCRIPTS (PYTHON 3.12 vs 3.11):** Do not run streaming scripts (`src.streaming.producer`, `src.streaming.consumer`, `scripts.streaming_demo`) directly in your PowerShell terminal using the local Python 3.12 `venv`. The `kafka-python` package is incompatible with Python 3.12 due to the removal of the standard library `imp` module. All Docker containers run **Python 3.11**, so **all Kafka scripts and experiments must be executed strictly via `docker exec`** inside the streaming containers (`streaming_producer_salud` or `streaming_consumer_salud`).
+
+##### Step 6: Web User Interfaces (Web UIs)
+
+| Service | URL | Default local credentials |
+|---|---|---|
+| **Apache Airflow 3** | <http://localhost:8080> | `airflow` / `airflow` |
+| **Apache Superset (BI)** | <http://localhost:8088> | `admin` / `admin` |
+| **Streamlit (Real-Time)** | <http://localhost:8501> | Direct public access (no login) |
+| **PostgREST API** | <http://localhost:3000> | Anonymous access (`etl_user`) |
+
+Quick PowerShell command to open them in the browser:
+```powershell
+Start-Process "http://localhost:8080"
+Start-Process "http://localhost:8088"
+Start-Process "http://localhost:8501"
+```
+
+---
 
 ### 10.3 Execute and verify
 
@@ -669,18 +763,62 @@ python -m venv .venv
 Open `notebooks/01_data_validation_cleanup.ipynb` and run all cells. It reads API cache snapshots by
 default. Clean CSV export is opt-in with `EXPORT_CLEAN_DATA=1`; normal EDA does not replace DW exports.
 
-### 10.4 Credentials
+### 10.4 Verification Commands and Live Experiments
 
-All sensitive material lives in `.env` (**gitignored**); `.env.example` ships placeholders and
-**local-development-only** default values. The example URLs use `localhost`; Compose publishes host ports, so do not expose these demonstration credentials outside the development machine:
+```powershell
+# --- 1. Inspect successful Airflow execution (Test A: 8/8 success) ---
+docker exec -it airflow_scheduler_salud airflow dags list-runs reliable_health_pipeline -o plain
 
-| Service | Default user / password (`.env.example`) |
-|---|---|
-| PostgreSQL | `etl_user` / `change_me_2026` |
-| Airflow | `airflow` / `airflow` (file `config/simple_auth_manager_passwords.json`, created in step 3) |
-| Superset | `admin` / `admin` |
+# --- 2. Controlled Quality Failure Demonstration (Test B: Blocked at Gate 1 DQ-02) ---
+docker exec -it airflow_scheduler_salud airflow dags trigger bad_health_pipeline
+# (In Airflow UI: validate_primary_raw fails in red; downstream tasks transition to upstream_failed)
 
-The repository contains **no** API keys, tokens or real credentials (see §12).
+# --- 3. Streaming Experiment 1: Invalid Event Injection (Contract Violation) ---
+docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-invalid
+# (Consumer rejects event, routes to DLQ, and keeps running; invalid_events_total increments in Streamlit)
+
+# --- 4. Streaming Experiment 2: Non-JSON Malformed Payload Injection ---
+docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-json-invalid
+
+# --- 5. Streaming Experiment 3: Threshold Alert Injection (|delta| >= 5%) ---
+docker exec -it streaming_producer_salud python -m scripts.streaming_demo --inject-alert
+
+# --- 6. Inspect Raw Events Flowing Through Kafka Topic ---
+docker exec -it streaming_producer_salud python -m scripts.streaming_demo --listen 5
+
+# --- 7. Consumer Interruption and Recovery Demonstration ---
+docker stop streaming_consumer_salud    # After 15s without heartbeat, Streamlit displays red '⛔ OFFLINE' banner
+docker start streaming_consumer_salud   # Within 1-2s transitions back to '✅ ONLINE' and processes backlogged events
+
+# --- 8. Run Repository Unit and Integration Test Suite (123 tests) ---
+docker exec -it etl_process pytest -q
+
+# --- 9. Query Data Warehouse State and Audit Logs in PostgreSQL ---
+docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT run_id, dag_id, status, dq_rules_passed, dq_rules_total, duration_seconds FROM audit.etl_run ORDER BY started_at DESC LIMIT 3;"
+docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT metric_name, metric_value, unit, event_count, invalid_count, updated_at FROM streaming.metric_state;"
+```
+
+### 10.5 Presentation Verification Checklist
+
+1. **Airflow (`:8080`):** `reliable_health_pipeline` showing green run (8/8 success), gate logs displaying `GX 11/11`, `4/4`, and `10/10 expectations`. Test B (`bad_health_pipeline`) showing deterministic failure in red.
+2. **Audit (`audit.etl_run`):** Records showing `SUCCESS` and `dq_rules_passed = 12/12` for Test A, and `BLOCKED_QUALITY` for Test B.
+3. **Superset (`:8088`):** Dashboard `ods3-salud-colombia` published and rendering all 7 charts (R1–R7) without database errors.
+4. **Streamlit (`:8501`):** Green `✅ Consumer consumer-1 active` banner, metrics continuously refreshing every 3 seconds in replay mode.
+5. **Test suite (123 tests):** `pytest -q` executing with 100% pass rate.
+6. **Captured evidence:** All execution logs and screenshots verified under [`docs/evidence/`](docs/evidence/).
+
+### 10.6 Credential and Secret Management
+
+All sensitive values are managed strictly through `.env` (**gitignored**); `.env.example` provides default values for **local development only**. The example URLs use `localhost`; Compose publishes host ports, so do not expose these demonstration credentials outside the development machine:
+
+| Parameter | Environment Variable | Default Local Value |
+|---|---|---|
+| PostgreSQL DW | `POSTGRES_USER` / `POSTGRES_PASSWORD` | `etl_user` / `change_me_2026` |
+| Airflow Web UI | `AIRFLOW_CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE` | `airflow` / `airflow` (in `config/simple_auth_manager_passwords.json`) |
+| Superset Admin | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` | `admin` / `admin` |
+| PostgREST Role | `POSTGREST_DB_ANON_ROLE` | `etl_user` |
+
+The repository contains no production credentials, private API keys, or real access tokens.
 
 ---
 
@@ -761,7 +899,45 @@ machine dies without SIGTERM, detection happens by staleness > 15 s).
 
 ## 12. Engineering Decisions and Limitations
 
-### 12.1 Important decisions
+### 12.1 Important engineering decisions
+
+1. **Ephemeral Great Expectations architecture & persistence strategy.**
+   Instead of generating static on-disk HTML Data Docs (which clutter version control and add overhead), Great Expectations 1.x is executed in ephemeral in-memory mode (`gx.get_context(mode="ephemeral")`). Suites and validation definitions run dynamically per DataFrame. Validation results are serialized into versioned JSON evidence files (`docs/evidence/gx/*.json`) and simultaneously persisted into PostgreSQL (`audit.dq_check_result` table). This provides SQL-queryable auditability, guarantees reproducibility in containerized environments, and eliminates disk sprawl.
+
+2. **Cross-source integration validation in Pandas (Rule DQ-08).**
+   While 11 of the 12 quality rules are evaluated with official Great Expectations 1.x expectations (`ExpectTableColumnsToMatchSet`, `ExpectColumnValuesToBeInSet`, etc.), Rule DQ-08 (verifying that ≥ 95% of CSV departments resolve to API Colombia demographic records) is evaluated natively in Pandas. Standard Great Expectations does not provide an out-of-the-box cross-source reconciliation expectation between two distinct in-memory datasets before loading. Both engines (native Pandas and Great Expectations) are combined through a conservative logical AND policy: a rule only passes if both engines approve it; any critical failure halts the DAG before touching the Data Warehouse.
+
+3. **Data Warehouse loading strategy: Idempotent Full Refresh.**
+   The dimensional Data Warehouse applies an idempotent *Full Refresh* pattern via `sql/init.sql` (`DROP TABLE IF EXISTS ... CASCADE` followed by `CREATE TABLE`). Crucially, the operational audit schema (`audit.*`) uses `CREATE TABLE IF NOT EXISTS` and is **never dropped**, ensuring complete run history and metric traceability across pipeline re-runs. Because the source healthcare datasets represent static point-in-time snapshots rather than continuous streaming flows, full table replacement ensures strict consistency, avoids orphaned surrogate keys, and eliminates duplicate rows without complex SCD-2 pipelines.
+
+4. **Temporal asymmetry and grain modeling in `dim_time`.**
+   The official source datasets published by government entities have different temporal snapshots: SGSSS affiliates microdata is captured as of April 2022 (Q2 2022 snapshot), while REPS installed healthcare capacity (beds, rooms) is captured as of November 2022 (Q4 2022 snapshot). `dim_time` conformed dimension explicitly models both quarters (`2022-Q2` and `2022-Q4`) without fabricating synthetic dates. Infrastructure capacity is modeled as a semi-additive stock (valid at a point in time, non-additive across time), whereas affiliates are modeled as an additive periodic snapshot.
+
+5. **Kafka producer modes: `--mode snapshot` (production) vs. `--mode replay` (simulation).**
+   To satisfy the strict specification ("Avoid repeatedly publishing unchanged KPI values without analytical justification"), the producer runs by default in `--mode snapshot` with a 10 s interval. It compares aggregated DW metrics against `streaming.producer_state` and **only publishes when values change**, emitting an extra `threshold_alert` if `|delta| ≥ 5%`. Conversely, `--mode replay` enables controlled event streaming demonstration when the underlying warehouse is static, replaying historical records at low latency (0.5 s) and explicitly stamping each event with `"source": {"mode": "replay", "simulation": true}` for total transparency.
+
+6. **Containerized execution in Python 3.11 for Kafka streaming.**
+   Streaming services and dependencies (`kafka-python>=2.2.2,<3.0`) run in dedicated Docker containers with Python 3.11. This prevents runtime failures on host environments running Python 3.12 (where the removal of the standard library module `imp` causes `kafka-python` imports to fail). All streaming demos, producers, and consumers are executed cleanly via `docker exec`.
+
+7. **Custom Airflow image (`Dockerfile.airflow`).**
+   The official Airflow image does not ship `great_expectations`. A custom build (`localhost/health-airflow:3.1.8`) installs `requirements.txt` under user `airflow` into `/home/airflow/.local`.
+
+8. **Protobuf version constraint (`protobuf>=5.26.1,<7`).**
+   Streamlit supports protobuf 7.x, but Google/OpenTelemetry providers in Airflow 3 require `<7`. Pinning `<7` prevents webserver and scheduler runtime crashes.
+
+9. **Dead-Letter Queue (DLQ) topic initialization on startup.**
+   To prevent lost messages when rejected events arrive before Kafka's auto-creation mechanism finishes, `src/streaming/consumer.py` proactively ensures the `salud.metric.dlq` topic exists and sets explicit JSON string serialization.
+
+10. **Reliable consumer heartbeat with `clock_timestamp()`.**
+    The consumer writes heartbeat timestamps using PostgreSQL's `clock_timestamp()` instead of `now()` (which freezes at transaction start), ensuring the real-time Streamlit dashboard accurately detects consumer outages when heartbeat age exceeds 15 s.
+
+11. **Deterministic manual DAG scheduling (`schedule=None`, `catchup=False`).**
+    DAGs are scheduled manually for deterministic execution and clear run ID traceability in compliance with academic evaluation standards.
+
+12. **Zero credentials exposed in codebase.**
+    All database credentials, ports, and secret keys are passed through `.env` (gitignored). Code fallbacks point strictly to local development placeholders (`change_me_2026`).
+
+Additional engineering decisions:
 
 1. **Separate Python environments.** `Dockerfile.airflow` installs `requirements.txt`
    under the official image's `/home/airflow/constraints.txt`, retains `apache-airflow==3.1.8`
@@ -794,32 +970,19 @@ Official Airflow image-extension guidance: [adding requirements](https://airflow
 
 ### 12.2 Assumptions
 
-- The included CSVs are the official snapshot (2026-09-06) and the Colombia API responds or a
-  cache exists (fallback included).
-- Facts are snapshots (2022-Q2 affiliates, 2022-Q4 capacity): `dim_time` has 2 periods because
-  the sources only contain those cuts.
-- Credentials and ports are for **local development**; any other environment changes them through
-  `.env` (never by editing code).
+- The included CSVs are the official snapshot (2026-09-06) and the Colombia API responds or a cache exists (fallback included).
+- Facts are snapshots (2022-Q2 affiliates, 2022-Q4 capacity): `dim_time` has 2 periods because the sources only contain those cuts.
+- Credentials and ports are for **local development**; any other environment changes them through `.env` (never by editing code).
 
 ### 12.3 Known limitations
 
-- **Single-broker Kafka** (`replication_factor=1`), no TLS/auth: acceptable for the demo, not
-  for production. Neither the DLQ nor the main topic has extended retention configured.
-- **At-least-once semantics** in the consumer (no Kafka transactions): `event_log` is
-  idempotent by `event_id` (`ON CONFLICT DO NOTHING`) and duplicate IDs do not increase counters.
-  Publishing to Kafka and committing PostgreSQL are still separate operations; distinct event IDs for
-  the same business change require source-level deduplication.
-- **3 s polling** on the real-time dashboard (no websockets/SSE): real dashboard latency ≈ 0–3 s
-  on top of processing latency.
-- **The heartbeat is best-effort:** a hard crash (kill -9, network) is detected by staleness
-  (>15 s), not by an explicit `stopped` state.
-- **`ON CONFLICT DO NOTHING` on load** means a re-run does not update existing rows: the model
-  is reloaded with a *full refresh* (`sql/init.sql`) to guarantee consistency; the audit history
-  is preserved.
-- **Third-party API:** if `api-colombia.com` is down and there is no cache, the DAG fails at
-  `extract_api` (visible and retryable; the cached JSONs in `data/raw/` minimize the impact).
-- **Temporal coverage limited** by the sources (2 periods) — historical KPIs are correct for
-  those snapshots, not for long time series.
+- **Single-broker Kafka** (`replication_factor=1`), no TLS/auth: acceptable for the demo, not for production. Neither the DLQ nor the main topic has extended retention configured.
+- **At-least-once semantics** in the consumer (no Kafka transactions): `event_log` is idempotent by `event_id` (`ON CONFLICT DO NOTHING`) and duplicate IDs do not increase counters, yet a redelivery may re-count `events_processed_total`. Publishing to Kafka and committing PostgreSQL are still separate operations; distinct event IDs for the same business change require source-level deduplication.
+- **3 s polling** on the real-time dashboard (no websockets/SSE): real dashboard latency ≈ 0–3 s on top of processing latency.
+- **The heartbeat is best-effort:** a hard crash (kill -9, network) is detected by staleness (>15 s), not by an explicit `stopped` state.
+- **`ON CONFLICT DO NOTHING` on load** means a re-run does not update existing rows: the model is reloaded with a *full refresh* (`sql/init.sql`) to guarantee consistency; the audit history is preserved.
+- **Third-party API:** if `api-colombia.com` is down and there is no cache, the DAG fails at `extract_api` (visible and retryable; the cached JSONs in `data/raw/` minimize the impact).
+- **Temporal coverage limited** by the sources (2 periods) — historical KPIs are correct for those snapshots, not for long time series.
 
 ---
 
