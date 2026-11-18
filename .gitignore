@@ -27,8 +27,7 @@ logs/
 etl.log
 # --- Local documentation/evidence (kept on the workstation, not committed) ---
 docs/
-# ...except the execution evidence required by the Final Delivery
-# Evidence is intentionally local and is no longer unignored.
+doc/
 
 # --- OS / editor ---
 .DS_Store
