@@ -28,6 +28,7 @@ etl.log
 # --- Documentation and execution evidence ---
 # The docs/ folder is part of the final deliverable and is intentionally committed.
 !docs/**/*.log
+doc/
 
 # --- OS / editor ---
 .DS_Store
