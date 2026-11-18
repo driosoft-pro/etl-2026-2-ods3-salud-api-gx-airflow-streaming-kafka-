@@ -256,7 +256,7 @@ until the run has finished so a task retry can use the same batch.
 The **manual** batch ETL (same code outside Airflow) is also available:
 
 ```bash
-podman-compose run --rm etl python -m src.etl_main
+podman-compose run --rm --no-deps etl python -m src.etl_main
 ```
 
 ### 4.3 Execution evidence (Test A / Test B)
@@ -553,14 +553,62 @@ and shows:
 
 ### 10.2 Startup (Docker Desktop / PowerShell)
 
-Run `start.bat` on Windows or `bash start.sh` on Linux/macOS for the management menu.
-Actions: `start`, `stop`, `validate`, `reset` (preserve data), `wipe` (remove project data),
-`steps` (guided clean rebuild), `auto` (clean rebuild, load, bootstrap and tests), `restart`
-and `setup` (load/bootstrap without wiping). Pass `--help` for usage. Destructive actions
-require typing `ELIMINAR` and only target this project's volumes and verified data directories.
-Windows uses `scripts/project_manager.ps1`; host Python is not required.
-See [the Spanish instructions](README_ES.md#102-puesta-en-marcha-docker-desktop--powershell)
-for the full option table and data retention details.
+Two equivalent launchers run the whole project: **`bash start.sh`** (Linux/macOS) and
+**`start.bat`** (Windows, a thin wrapper over `scripts/project_manager.ps1`; no Python is
+needed on the host). Both work from any directory, create `.env` and the Airflow
+credentials on first run, and expose the same menu and the same actions.
+
+#### Quick start
+
+```bash
+# Linux / macOS — full clean rebuild: wipe → build → start → load Airflow → dashboards → tests
+bash start.sh auto
+```
+
+```powershell
+# Windows PowerShell — the same flow (menu option 7)
+start.bat auto
+```
+
+`auto` asks you to type `ELIMINAR` first. On a machine you do not want to wipe, use
+`setup` (start + first Airflow load + dashboards, nothing deleted) or just `start`
+(services only).
+
+#### Menu and command-line actions
+
+Run the launcher without arguments for the interactive menu, or pass an action directly:
+
+```bash
+bash start.sh            # interactive menu
+bash start.sh --help     # list the actions without starting Docker
+start.bat                # interactive menu (Windows)
+start.bat validate       # run a single action directly
+```
+
+| # | Menu option (as printed) | Action | What it does |
+|---|---|---|---|
+| 1 | Iniciar servicios | `start` | Build if needed and start the services, waiting until they are healthy |
+| 2 | Detener servicios | `stop` | Stop the containers, keep the data |
+| 3 | Validar instalacion | `validate` | Compose config, container status, `pip check` and the pytest suite |
+| 4 | Resetear contenedores (conserva datos) | `reset` | Recreate the containers, keep volumes and data |
+| 5 | Vaciar volumenes y datos | `wipe` | Remove this project's containers, volumes, `.pgdata` and `data/batches` |
+| 6 | Recrear paso a paso | `steps` | Clean rebuild that pauses before each of its 5 stages |
+| 7 | Reconstruccion automatica completa | `auto` | `wipe` + `start` + Airflow load + Superset bootstrap + `validate` |
+| 8 | Reiniciar servicios | `restart` | Restart the containers and print the links |
+| 9 | Instalar/cargar dashboards sin borrar | `setup` | Start, load Airflow and register the BI dashboards without wiping |
+| 10 | Mostrar todos los enlaces del proyecto | `links` | Print every project URL (see [10.3](#103-links-to-view-the-data)); no Docker needed |
+| 11 | Mostrar estado, topicos, lag y recursos de Kafka | `kafka` | Point-in-time Kafka health, topics, consumer groups, lag, disk and resources |
+| 12 | Monitorear Kafka en tiempo real | `kafka-live` | Live refresh every 5 s, read-only; `Ctrl+C` exits |
+| 0 | Salir | — | Leave the menu |
+
+Options **5, 6 and 7** (`wipe`, `steps`, `auto`) require typing **`ELIMINAR`** and only
+touch this project's containers, volumes and verified data directories (`.pgdata`,
+`data/batches`); they never run `docker system prune` nor remove resources of other
+projects, and code, `.env`, source CSVs and `docs/evidence` are always preserved.
+`reset` and `restart` keep the data. Pass `--help` to see the action list without starting
+Docker. The [Spanish instructions](README_ES.md#102-puesta-en-marcha-docker-desktop--powershell)
+describe the same menu with additional data-retention details.
+
 Use `start.bat kafka` or `bash start.sh kafka` to inspect Kafka health, topics, partitions,
 consumer groups, lag, log disk usage and one-shot CPU/memory/network/block I/O. This is a
 point-in-time view; historical resource charts require periodic capture or JMX/Prometheus.
@@ -579,7 +627,7 @@ if (!(Test-Path config/simple_auth_manager_passwords.json)) {
 $dc = @('-f', 'docker-compose.yml')
 docker compose @dc config --quiet
 docker compose @dc up -d --build
-docker compose @dc ps -a
+docker compose @dc ps -a    # podman-compose has no `-a`: run `docker compose @dc ps` instead (it already lists stopped containers)
 ```
 
 The startup graph waits for PostgreSQL/Kafka health and for successful database initialization.
@@ -598,9 +646,15 @@ docker exec airflow_scheduler_salud airflow dags trigger reliable_health_pipelin
 3. Register the DW and create the dashboard's seven charts:
 
 ```powershell
-docker compose @dc --profile bootstrap run --rm superset-bootstrap
+docker compose @dc --profile bootstrap run --rm --no-deps superset-bootstrap
 docker compose @dc exec superset /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
 ```
+
+> [!NOTE]
+> `--no-deps` matters under **podman-compose**: without it, its `run` triggers an internal
+> `up` of the dependencies with `--remove-orphans` and a compose hash computed per
+> `--profile`, so it tears down every service of the project and only recreates the
+> dependencies. Docker Compose is unaffected, and the flag exists in both engines.
 
 Open [the historical dashboard](http://localhost:8088/superset/dashboard/ods3-salud-colombia/)
 (`admin` / `admin`) and [the streaming dashboard](http://localhost:8501).
@@ -619,7 +673,7 @@ cp .env.example .env
 printf '{"airflow":"airflow"}' > config/simple_auth_manager_passwords.json
 podman-compose up -d --build
 # After the first successful DAG load:
-podman-compose --profile bootstrap run --rm superset-bootstrap
+podman-compose --profile bootstrap run --rm --no-deps superset-bootstrap
 podman exec superset_salud /app/.venv/bin/python /app/scripts/superset_charts_bootstrap.py
 ```
 
@@ -677,7 +731,7 @@ docker exec -it airflow_scheduler_salud airflow dags trigger reliable_health_pip
 
 ```powershell
 # 1. Register DW connection and R1–R7 analytical datasets in Superset (bootstrap profile)
-docker compose --profile bootstrap run --rm superset-bootstrap
+docker compose --profile bootstrap run --rm --no-deps superset-bootstrap
 
 # 2. Generate all 7 R1–R7 charts and configure the Dashboard layout grid
 docker exec -it superset_salud python /app/scripts/superset_charts_bootstrap.py
@@ -714,7 +768,78 @@ Start-Process "http://localhost:8501"
 
 ---
 
-### 10.3 Execute and verify
+### 10.3 Links to view the data
+
+With the services running (`start`, `setup` or `auto`), these are every place where the data
+can be inspected. **Ports are read from `.env`** (`AIRFLOW_WEBSERVER_PORT`, `SUPERSET_PORT`,
+`REALTIME_DASHBOARD_PORT`, `POSTGREST_PORT`, `POSTGRES_PORT`, `KAFKA_EXTERNAL_PORT`); the
+values below are the defaults shipped in `.env.example`. Print the exact list for your
+machine at any time with `bash start.sh links` or `start.bat links` (works without Docker).
+
+#### Orchestration — Apache Airflow · `airflow` / `airflow`
+
+| What to view | URL |
+|---|---|
+| Airflow UI (DAG list, runs, logs) | <http://localhost:8080> |
+| Main DAG `reliable_health_pipeline` (8 tasks) | <http://localhost:8080/dags/reliable_health_pipeline> |
+| Controlled-failure DAG `bad_health_pipeline` | <http://localhost:8080/dags/bad_health_pipeline> |
+| Airflow health endpoint | <http://localhost:8080/api/v2/monitor/health> |
+
+#### Historical analytics — Apache Superset · `admin` / `admin`
+
+| What to view | URL |
+|---|---|
+| Superset UI | <http://localhost:8088> |
+| **Dashboard BI “ODS 3 – Salud Colombia” (charts R1–R7)** | <http://localhost:8088/superset/dashboard/ods3-salud-colombia/> |
+| Dashboard list | <http://localhost:8088/dashboard/list/> |
+| Charts list | <http://localhost:8088/chart/list/> |
+| Datasets (views and facts) | <http://localhost:8088/tablemodelview/list/> |
+| SQL Lab (query the DW interactively) | <http://localhost:8088/sqllab/> |
+
+The BI dashboard is created by the bootstrap step (menu option **9** / `setup`); log in with
+your configured Superset credentials.
+
+#### Real time — Streamlit · no login
+
+| What to view | URL |
+|---|---|
+| Real-time dashboard (Kafka metrics, refresh ≈ 3 s, consumer ONLINE/OFFLINE banner) | <http://localhost:8501> |
+
+#### REST API — PostgREST · anonymous (`etl_user`)
+
+Default base URL <http://localhost:3220/> (`POSTGREST_PORT` in `.env`); the root returns the
+**OpenAPI schema** of the whole DW.
+
+| What to view | URL |
+|---|---|
+| Root + OpenAPI schema | <http://localhost:3220/> |
+| `dim_time` | <http://localhost:3220/dim_time?limit=10> |
+| `dim_geografia` | <http://localhost:3220/dim_geografia?limit=10> |
+| `dim_regime` | <http://localhost:3220/dim_regime?limit=10> |
+| `dim_facility` | <http://localhost:3220/dim_facility?limit=10> |
+| `dim_capacity_type` | <http://localhost:3220/dim_capacity_type?limit=10> |
+| `fact_affiliates` | <http://localhost:3220/fact_affiliates?limit=10> |
+| `fact_facility_capacity` | <http://localhost:3220/fact_facility_capacity?limit=10> |
+
+#### Data Warehouse — PostgreSQL · database client, not a browser
+
+| What to view | Address |
+|---|---|
+| PostgreSQL 16, database `salud_colombia`, user `etl_user` | `localhost:5432` (DBeaver, pgAdmin, `psql`) |
+| Run history and DQ results | schema `audit` → `audit.etl_run`, `audit.dq_check_result` |
+| Live streaming metrics | schema `streaming` → `streaming.metric_state`, `streaming.event_log` |
+
+#### Streaming — Kafka · Kafka client, not a browser
+
+| What to view | Address |
+|---|---|
+| External broker listener | `localhost:19092` (`KAFKA_EXTERNAL_PORT`; in-cluster `kafka:9092`) |
+| Topics | `salud.metric.updates`, `salud.metric.dlq`, `__consumer_offsets` |
+
+Use menu option **11** (`kafka`) for topics, consumer groups and lag, and **12**
+(`kafka-live`) to watch them refresh every five seconds.
+
+### 10.4 Execute and verify
 
 `ETL_SCHEDULE` defaults to `0 6 * * *`: **daily at 06:00 UTC / 01:00 America/Bogota**.
 `catchup=False` avoids historical backfills and `max_active_runs=1` prevents concurrent full refreshes.
@@ -729,7 +854,7 @@ docker exec airflow_scheduler_salud airflow dags list-runs reliable_health_pipel
 docker exec airflow_scheduler_salud airflow dags trigger bad_health_pipeline
 
 # Tests in a disposable tool container; quality reports must not overwrite final evidence.
-docker compose @dc --profile tools run --rm --build -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
+docker compose @dc --profile tools run --rm --build --no-deps -e GX_EVIDENCE_DIR=/tmp/etl-test-gx etl python -m pytest -q -p no:cacheprovider
 
 # Simulated arrival of historical DW metrics (one bounded replay).
 docker exec streaming_producer_salud python -m src.streaming.producer --mode replay --interval 0.5 --cycles 1
@@ -763,7 +888,7 @@ python -m venv .venv
 Open `notebooks/01_data_validation_cleanup.ipynb` and run all cells. It reads API cache snapshots by
 default. Clean CSV export is opt-in with `EXPORT_CLEAN_DATA=1`; normal EDA does not replace DW exports.
 
-### 10.4 Verification Commands and Live Experiments
+### 10.5 Verification Commands and Live Experiments
 
 ```powershell
 # --- 1. Inspect successful Airflow execution (Test A: 8/8 success) ---
@@ -798,7 +923,7 @@ docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT ru
 docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT metric_name, metric_value, unit, event_count, invalid_count, updated_at FROM streaming.metric_state;"
 ```
 
-### 10.5 Presentation Verification Checklist
+### 10.6 Presentation Verification Checklist
 
 1. **Airflow (`:8080`):** `reliable_health_pipeline` showing green run (8/8 success), gate logs displaying `GX 11/11`, `4/4`, and `10/10 expectations`. Test B (`bad_health_pipeline`) showing deterministic failure in red.
 2. **Audit (`audit.etl_run`):** Records showing `SUCCESS` and `dq_rules_passed = 12/12` for Test A, and `BLOCKED_QUALITY` for Test B.
@@ -807,7 +932,7 @@ docker exec -it warehouse_salud psql -U etl_user -d salud_colombia -c "SELECT me
 5. **Test suite (123 tests):** `pytest -q` executing with 100% pass rate.
 6. **Captured evidence:** All execution logs and screenshots verified under [`docs/evidence/`](docs/evidence/).
 
-### 10.6 Credential and Secret Management
+### 10.7 Credential and Secret Management
 
 All sensitive values are managed strictly through `.env` (**gitignored**); `.env.example` provides default values for **local development only**. The example URLs use `localhost`; Compose publishes host ports, so do not expose these demonstration credentials outside the development machine:
 
